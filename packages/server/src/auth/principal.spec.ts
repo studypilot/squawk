@@ -170,6 +170,39 @@ describe("session cookie", () => {
       expect(multipartTokenRequest.status).toBe(403)
    })
 
+   it("refuses cookie-authenticated writes from a foreign origin", async () => {
+      const upload = () => squawkForm({ siteKey: "csrf-origin", page: "/", body: "x" })
+
+      const foreign = await context.request("POST", "/api/squawks", {
+         credentials: { cookie },
+         headers: { Origin: "https://evil.example" },
+         body: upload()
+      })
+      expect(foreign.status).toBe(403)
+      expect(errorResponseSchema.parse(await foreign.json()).error.code).toBe("forbidden")
+
+      const foreignDelete = await context.request("DELETE", "/api/tokens/anything", {
+         credentials: { cookie },
+         headers: { Origin: "https://evil.example" }
+      })
+      expect(foreignDelete.status).toBe(403)
+
+      const own = await context.request("POST", "/api/squawks", {
+         credentials: { cookie },
+         headers: { Origin: "http://squawk.test" },
+         body: upload()
+      })
+      expect(own.status).toBe(201)
+
+      const { secret } = await context.createToken({ kind: "agent", createdBy: user })
+      const bearer = await context.request("POST", "/api/squawks", {
+         credentials: { bearer: secret },
+         headers: { Origin: "https://evil.example" },
+         body: upload()
+      })
+      expect(bearer.status).toBe(201)
+   })
+
    it("lets bearer requests skip the content-type rule", async () => {
       const { secret } = await context.createToken({ kind: "login", createdBy: user })
       const response = await context.request("POST", "/api/tokens", {

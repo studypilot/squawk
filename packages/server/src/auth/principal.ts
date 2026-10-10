@@ -124,14 +124,23 @@ async function resolveBearer(c: Context<AppEnv>, authorization: string): Promise
 }
 
 /**
- * Cookie-authenticated writes must be JSON (or the multipart squawk upload). Plain HTML forms
- * cannot send those content types, and cross-origin scripts need a CORS preflight that `/api`
- * never grants with credentials. A DELETE carries no body and always needs that preflight
- * cross-origin, so it is exempt.
+ * Cookie-authenticated writes must come from the server's own origin: browsers send `Origin` on
+ * every cross-origin request (forms included), so a foreign one is refused outright. The body
+ * must also be JSON (or the multipart squawk upload), which plain HTML forms cannot send and
+ * cross-origin scripts can only send after a CORS preflight that `/api` never grants with
+ * credentials. A DELETE carries no body and always needs that preflight, so only the origin rule
+ * applies to it.
  */
-function assertCsrfSafe(c: Context): void {
+function assertCsrfSafe(c: Context<AppEnv>): void {
    const method = c.req.method
-   if (safeMethods.has(method) || method === "DELETE") return
+   if (safeMethods.has(method)) return
+
+   const origin = c.req.header("origin")
+   const ownOrigin = new URL(c.var.dependencies.config.publicUrl).origin
+   if (origin !== undefined && origin !== ownOrigin) {
+      throw forbidden("Cookie-authenticated writes must come from the inbox origin")
+   }
+   if (method === "DELETE") return
 
    const contentType = (c.req.header("content-type") ?? "").toLowerCase()
    if (contentType.startsWith("application/json")) return

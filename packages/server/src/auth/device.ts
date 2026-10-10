@@ -9,8 +9,9 @@ import {
    type DevicePollResponse,
    type DeviceStartResponse
 } from "@squawk/shared"
-import { and, eq, gt, lt } from "drizzle-orm"
-import { Hono } from "hono"
+import { getConnInfo } from "@hono/node-server/conninfo"
+import { and, count, eq, gt, lt } from "drizzle-orm"
+import { Hono, type Context } from "hono"
 import { toIsoString, toUserAuthor } from "../api/views"
 import type { AppEnv } from "../context"
 import type { Database } from "../db/index"
@@ -23,23 +24,34 @@ import { randomBase62, sha256Hex } from "./secrets"
 import { insertToken } from "./tokens"
 
 const userCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-const DEVICE_STARTS_PER_LABEL_PER_MINUTE = 5
+const DEVICE_STARTS_PER_ADDRESS_PER_MINUTE = 5
+/** Unapproved, unexpired codes across all callers; keeps the table bounded under a flood. */
+export const PENDING_DEVICE_CODES_MAX = 500
 /** Tolerance for client timers that fire slightly early. */
 const POLL_INTERVAL_SLACK_MS = 500
 
 /** Device-code login for the overlay and the CLI, under `/api/auth/device`. */
 export function createDeviceRoutes(): Hono<AppEnv> {
    const routes = new Hono<AppEnv>()
-   const startLimiter = createRateLimiter(DEVICE_STARTS_PER_LABEL_PER_MINUTE, 60_000)
+   const startLimiter = createRateLimiter(DEVICE_STARTS_PER_ADDRESS_PER_MINUTE, 60_000)
 
    routes.post("/", async c => {
       const { database, config } = c.var.dependencies
       const input = parseInput(deviceStartInputSchema, await readJsonBody(c))
-      if (!startLimiter.tryConsume(input.label)) {
+      if (!startLimiter.tryConsume(clientAddress(c))) {
          throw new ApiError(429, "rate_limited", "Too many login attempts, try again in a minute")
       }
 
-      await database.delete(deviceCodes).where(lt(deviceCodes.expiresAt, new Date()))
+      const now = new Date()
+      await database.delete(deviceCodes).where(lt(deviceCodes.expiresAt, now))
+      const [pending] = await database
+         .select({ total: count() })
+         .from(deviceCodes)
+         .where(and(eq(deviceCodes.status, "pending"), gt(deviceCodes.expiresAt, now)))
+      if ((pending?.total ?? 0) >= PENDING_DEVICE_CODES_MAX) {
+         throw new ApiError(429, "rate_limited", "Too many pending logins, try again later")
+      }
+
       const deviceCode = randomBase62(32)
       const userCode = createUserCode()
       await database.insert(deviceCodes).values({
@@ -126,6 +138,18 @@ export function createDeviceRoutes(): Hono<AppEnv> {
    })
 
    return routes
+}
+
+/** The first `X-Forwarded-For` entry behind the reverse proxy, else the socket's peer address. */
+function clientAddress(c: Context<AppEnv>): string {
+   const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+   if (forwarded) return forwarded
+   try {
+      return getConnInfo(c).remote.address ?? "unknown"
+   } catch {
+      // No Node socket behind this request (tests call the app directly).
+      return "unknown"
+   }
 }
 
 /**

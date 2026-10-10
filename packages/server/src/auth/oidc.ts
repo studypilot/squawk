@@ -117,10 +117,10 @@ export function createOidcRoutes(): Hono<AppEnv> {
 }
 
 /** Returns a reason to refuse the sign-in, or null when the account may use this server. */
-function checkClaims(claims: client.IDToken | undefined, oidc: OidcConfig): string | null {
+export function checkClaims(claims: client.IDToken | undefined, oidc: OidcConfig): string | null {
    if (!claims) return "The identity provider returned no ID token."
    if (typeof claims.email !== "string") return "The identity provider returned no email address."
-   if (claims.email_verified === false) return "Your email address is not verified."
+   if (claims.email_verified !== true) return "Your email address is not verified."
 
    const domain = claims.email.split("@").at(-1)?.toLowerCase() ?? ""
    if (!oidc.allowedEmailDomains.includes(domain)) {

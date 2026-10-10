@@ -14,7 +14,11 @@ export interface ExtensionBridge {
    readonly available: boolean
    /** Pings the content script and resolves whether it answered in time. */
    detect(timeoutMs?: number): Promise<boolean>
-   /** Asks the extension for a capture of the visible tab; null on error or timeout. */
+   /**
+    * Asks the extension for a capture of the visible tab; null on error or timeout. Pings once
+    * more first when no pong has arrived yet, as the content script may have been injected after
+    * the startup ping.
+    */
    capture(timeoutMs?: number): Promise<ExtensionCapture | null>
 }
 
@@ -64,6 +68,7 @@ export function createExtensionBridge(target: Window = window): ExtensionBridge 
          return available
       },
       async capture(timeoutMs = EXTENSION_CAPTURE_TIMEOUT_MS) {
+         if (!available && !(await this.detect())) return null
          const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
          const reply = waitFor(
             message =>

@@ -31,7 +31,7 @@ export async function takeScreenshot(
    overlayHost.style.setProperty("visibility", "hidden", "important")
    try {
       await nextFrames(2)
-      const fromExtension = bridge.available ? await bridge.capture() : null
+      const fromExtension = await bridge.capture()
       source = fromExtension ? "extension" : "dom"
       dataUrl =
          fromExtension?.dataUrl ??

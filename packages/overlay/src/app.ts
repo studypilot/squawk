@@ -77,7 +77,14 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    })
 
    const bridge = createExtensionBridge()
-   void bridge.detect().then(available => store.set({ extensionAvailable: available }))
+   function detectExtension(): void {
+      void bridge.detect().then(available => store.set({ extensionAvailable: available }))
+   }
+   detectExtension()
+   // The extension's content script arrives at document idle, often after this script ran.
+   if (document.readyState !== "complete") {
+      window.addEventListener("load", detectExtension, { once: true })
+   }
 
    const host = document.createElement("div")
    host.id = "squawk-root"

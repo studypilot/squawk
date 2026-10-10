@@ -104,6 +104,22 @@ describe("overlay bootstrap", () => {
       expect(text(".sign-in")).toContain("Sign in")
    })
 
+   it("pings the extension again once the window has loaded", async () => {
+      const posted = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+      const pings = () => posted.mock.calls.filter(([message]) => message.type === "ext:ping")
+      Object.defineProperty(document, "readyState", { value: "interactive", configurable: true })
+      try {
+         await boot()
+         expect(pings()).toHaveLength(1)
+         window.dispatchEvent(new Event("load"))
+         expect(pings()).toHaveLength(2)
+         window.dispatchEvent(new Event("load"))
+         expect(pings()).toHaveLength(2)
+      } finally {
+         Object.defineProperty(document, "readyState", { value: "complete", configurable: true })
+      }
+   })
+
    it("follows client-side navigation for the page key", async () => {
       const squawk = await boot()
       squawk.open()

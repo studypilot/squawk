@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { deviceCodes, tokens } from "../db/schema"
 import { createTestContext, type TestContext } from "../testing/test-context"
+import { PENDING_DEVICE_CODES_MAX } from "./device"
 import { sha256Hex } from "./secrets"
 
 let context: TestContext
@@ -22,10 +23,26 @@ beforeAll(async () => {
 
 afterAll(() => context.close())
 
-async function start(label: string, kind = "cli"): Promise<DeviceStartResponse> {
-   const response = await context.request("POST", "/api/auth/device", { json: { kind, label } })
+let nextAddress = 0
+
+/** Starts from a fresh client address unless given one, so tests do not share the limiter. */
+async function start(
+   label: string,
+   options: { kind?: string; address?: string } = {}
+): Promise<DeviceStartResponse> {
+   const response = await startRequest(label, options)
    expect(response.status).toBe(200)
    return deviceStartResponseSchema.parse(await response.json())
+}
+
+function startRequest(
+   label: string,
+   { kind = "cli", address = `10.0.0.${(nextAddress += 1)}` }: { kind?: string; address?: string }
+): Promise<Response> {
+   return context.request("POST", "/api/auth/device", {
+      headers: { "X-Forwarded-For": `${address}, 192.0.2.1` },
+      json: { kind, label }
+   })
 }
 
 async function poll(deviceCode: string): Promise<{ status: number; body: unknown }> {
@@ -102,7 +119,7 @@ describe("device-code login", () => {
    })
 
    it("reports a denial once, then forgets the code", async () => {
-      const started = await start("https://preview.example.com", "overlay")
+      const started = await start("https://preview.example.com", { kind: "overlay" })
       const deny = await context.request("POST", "/api/auth/device/deny", {
          credentials: { cookie },
          json: { userCode: started.userCode }
@@ -138,13 +155,41 @@ describe("device-code login", () => {
       expect(tooFast.body).toMatchObject({ error: { code: "rate_limited" } })
    })
 
-   it("limits starts to five per label and minute", async () => {
-      for (let attempt = 0; attempt < 5; attempt += 1) await start("busy.local")
-      const sixth = await context.request("POST", "/api/auth/device", {
-         json: { kind: "cli", label: "busy.local" }
-      })
+   it("limits starts to five per client address and minute, whatever the label", async () => {
+      const address = "198.51.100.7"
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+         await start(`busy-${attempt}.local`, { address })
+      }
+      const sixth = await startRequest("another.local", { address })
       expect(sixth.status).toBe(429)
-      await start("calm.local")
+      await start("busy-0.local", { address: "198.51.100.8" })
+
+      const sameSocket = () =>
+         context.request("POST", "/api/auth/device", {
+            json: { kind: "cli", label: "no-proxy.local" }
+         })
+      for (let attempt = 0; attempt < 5; attempt += 1) expect((await sameSocket()).status).toBe(200)
+      expect((await sameSocket()).status).toBe(429)
+   })
+
+   it("caps the number of pending codes across all callers", async () => {
+      const expiresAt = new Date(Date.now() + 600_000)
+      const filler = Array.from({ length: PENDING_DEVICE_CODES_MAX }, (_, index) => ({
+         deviceCodeHash: sha256Hex(`filler-${index}`),
+         userCode: `FILL-${index.toString(36).toUpperCase().padStart(4, "0")}`,
+         kind: "cli" as const,
+         label: "filler",
+         expiresAt
+      }))
+      await context.database.insert(deviceCodes).values(filler)
+      try {
+         const overCap = await startRequest("late.local", {})
+         expect(overCap.status).toBe(429)
+         expect(await overCap.json()).toMatchObject({ error: { code: "rate_limited" } })
+      } finally {
+         await context.database.delete(deviceCodes).where(eq(deviceCodes.label, "filler"))
+      }
+      await start("after-cleanup.local")
    })
 
    it("requires a browser session to look up or approve codes", async () => {

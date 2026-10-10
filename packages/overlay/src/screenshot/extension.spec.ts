@@ -10,6 +10,16 @@ function postedMessages(): ExtensionMessage[] {
    return vi.mocked(window.postMessage).mock.calls.map(([message]) => message as ExtensionMessage)
 }
 
+/** A bridge whose startup ping was answered. */
+async function detectedBridge(): Promise<ReturnType<typeof createExtensionBridge>> {
+   const bridge = createExtensionBridge()
+   const detected = bridge.detect()
+   reply({ source: "squawk", type: "ext:pong", version: "0.1.0" })
+   await detected
+   vi.mocked(window.postMessage).mockClear()
+   return bridge
+}
+
 beforeEach(() => {
    vi.useFakeTimers()
    vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
@@ -50,7 +60,7 @@ describe("extension bridge", () => {
    })
 
    it("returns the capture for its own request id", async () => {
-      const bridge = createExtensionBridge()
+      const bridge = await detectedBridge()
       const captured = bridge.capture()
       const request = postedMessages()[0]
       if (request?.type !== "ext:capture") throw new Error("no capture request posted")
@@ -77,7 +87,7 @@ describe("extension bridge", () => {
    })
 
    it("gives up after 5 s or on an error reply", async () => {
-      const bridge = createExtensionBridge()
+      const bridge = await detectedBridge()
       const timedOut = bridge.capture()
       await vi.advanceTimersByTimeAsync(5000)
       await expect(timedOut).resolves.toBeNull()
@@ -94,5 +104,41 @@ describe("extension bridge", () => {
          error: "No user activation"
       })
       await expect(failed).resolves.toBeNull()
+   })
+
+   it("pings again before a capture when the extension was not seen at startup", async () => {
+      const bridge = createExtensionBridge()
+      const detected = bridge.detect()
+      await vi.advanceTimersByTimeAsync(300)
+      await expect(detected).resolves.toBe(false)
+
+      const captured = bridge.capture()
+      expect(postedMessages().map(message => message.type)).toEqual(["ext:ping", "ext:ping"])
+      reply({ source: "squawk", type: "ext:pong", version: "0.1.0" })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(bridge.available).toBe(true)
+      const request = postedMessages().at(-1)
+      if (request?.type !== "ext:capture") throw new Error("no capture request posted")
+
+      reply({
+         source: "squawk",
+         type: "ext:captured",
+         requestId: request.requestId,
+         dataUrl: "data:image/png;base64,AAAA",
+         devicePixelRatio: 1
+      })
+      await expect(captured).resolves.toEqual({
+         dataUrl: "data:image/png;base64,AAAA",
+         devicePixelRatio: 1
+      })
+   })
+
+   it("skips the capture request when the second ping goes unanswered", async () => {
+      const bridge = createExtensionBridge()
+      const captured = bridge.capture()
+      await vi.advanceTimersByTimeAsync(300)
+      await expect(captured).resolves.toBeNull()
+      expect(postedMessages().map(message => message.type)).toEqual(["ext:ping"])
+      expect(bridge.available).toBe(false)
    })
 })

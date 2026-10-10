@@ -331,15 +331,27 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
          status.textContent = next.status === "open" ? "Open" : "Resolved"
          status.className = `status is-${next.status}`
          statusButton.textContent = next.status === "open" ? "Resolve" : "Reopen"
-         const pageUrl = next.page !== state.pageKey ? next.meta.url : undefined
-         pageLink.hidden = !pageUrl
-         if (pageUrl) pageLink.setAttribute("href", pageUrl)
+         const pageUrl = next.page !== state.pageKey ? safeHttpUrl(next.meta.url) : null
+         pageLink.hidden = pageUrl === null
+         if (pageUrl === null) pageLink.removeAttribute("href")
+         else pageLink.setAttribute("href", pageUrl)
          messages.replaceChildren(...threadMessages(next))
       },
       dispose() {
          disposed = true
          if (screenshotUrl) URL.revokeObjectURL(screenshotUrl)
       }
+   }
+}
+
+/** Only http(s) URLs may become links; `meta.url` is reporter-supplied and could be anything. */
+function safeHttpUrl(value: string | undefined): string | null {
+   if (!value) return null
+   try {
+      const url = new URL(value)
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : null
+   } catch {
+      return null
    }
 }
 
