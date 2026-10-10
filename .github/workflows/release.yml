@@ -1,0 +1,83 @@
+name: Release
+
+# Every push to main builds the server image and tags it `prod-<date>.<time>`; the
+# kube repository's image automation picks the newest such tag up and rolls it out.
+# A `v*` tag additionally publishes the extension zip and the CLI tarball as release
+# assets and pushes the CLI to GitHub Packages.
+
+on:
+   push:
+      branches: [main]
+      tags: ["v*"]
+   workflow_dispatch:
+
+permissions:
+   contents: write
+   packages: write
+
+concurrency:
+   group: release-${{ github.ref }}
+   cancel-in-progress: false
+
+jobs:
+   image:
+      name: Server image
+      runs-on: ubuntu-24.04-arm
+      outputs:
+         tag: ${{ steps.tag.outputs.tag }}
+      steps:
+         - uses: actions/checkout@v6
+         - name: Compute the image tag
+           id: tag
+           run: echo "tag=prod-$(TZ=Europe/Berlin date +%Y-%m-%d.%H%M)" >> "$GITHUB_OUTPUT"
+         - uses: docker/setup-buildx-action@v3
+         - uses: docker/login-action@v3
+           with:
+              registry: ghcr.io
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+         - uses: docker/build-push-action@v6
+           with:
+              context: .
+              file: deploy/Dockerfile
+              platforms: linux/arm64
+              push: true
+              build-args: |
+                 SQUAWK_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+              tags: |
+                 ghcr.io/studypilot/squawk:${{ steps.tag.outputs.tag }}
+                 ghcr.io/studypilot/squawk:${{ github.sha }}
+                 ghcr.io/studypilot/squawk:latest
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
+
+   assets:
+      name: Extension zip and CLI package
+      if: github.ref_type == 'tag'
+      runs-on: ubuntu-24.04-arm
+      steps:
+         - uses: actions/checkout@v6
+         - uses: pnpm/action-setup@v5
+         - uses: actions/setup-node@v6
+           with:
+              node-version: 22
+              cache: pnpm
+              registry-url: https://npm.pkg.github.com
+              scope: "@studypilot"
+         - run: pnpm install --frozen-lockfile
+         - run: pnpm --filter @squawk/extension build
+         - run: pnpm --filter @squawk/extension zip
+         - run: pnpm --filter @studypilot/squawk-cli build
+         - name: Publish the CLI to GitHub Packages
+           run: pnpm --filter @studypilot/squawk-cli publish --no-git-checks --access restricted
+           env:
+              NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         - name: Pack the CLI tarball
+           run: cd packages/cli && pnpm pack --pack-destination ../../
+         - name: Attach assets to the GitHub release
+           uses: softprops/action-gh-release@v2
+           with:
+              generate_release_notes: true
+              files: |
+                 packages/extension/squawk-extension-*.zip
+                 studypilot-squawk-cli-*.tgz
