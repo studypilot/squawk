@@ -1,0 +1,46 @@
+# Local Squawk: Postgres plus the server image built from this repository.
+#   cp deploy/.env.example deploy/.env   # then edit
+#   docker compose -f deploy/docker-compose.yml up --build
+name: squawk
+
+services:
+   db:
+      image: postgres:17-alpine
+      environment:
+         POSTGRES_USER: squawk
+         POSTGRES_PASSWORD: squawk
+         POSTGRES_DB: squawk
+      volumes:
+         - squawk-db:/var/lib/postgresql/data
+      # Published on 5544 so it does not collide with a Postgres already running on 5432.
+      ports:
+         - "127.0.0.1:5544:5432"
+      healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U squawk -d squawk"]
+         interval: 5s
+         timeout: 3s
+         retries: 10
+      restart: unless-stopped
+
+   server:
+      build:
+         context: ..
+         dockerfile: deploy/Dockerfile
+      env_file:
+         - path: .env
+           required: false
+      environment:
+         DATABASE_URL: postgres://squawk:squawk@db:5432/squawk
+         DATA_DIR: /data
+      volumes:
+         - squawk-data:/data
+      ports:
+         - "3000:3000"
+      depends_on:
+         db:
+            condition: service_healthy
+      restart: unless-stopped
+
+volumes:
+   squawk-db:
+   squawk-data:

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+   <head>
+      <meta charset="utf-8" />
+      <title>Squawk Screenshots</title>
+      <style>
+         body {
+            width: 280px;
+            margin: 0;
+            padding: 14px 16px;
+            font:
+               13px/1.45 system-ui,
+               sans-serif;
+            color: #1f2328;
+         }
+         h1 {
+            margin: 0 0 8px;
+            font-size: 14px;
+         }
+         .version {
+            font-weight: normal;
+            color: #6e7781;
+         }
+         p {
+            margin: 0 0 10px;
+         }
+         a {
+            color: #0969da;
+         }
+      </style>
+   </head>
+   <body>
+      <h1>Squawk Screenshots <span class="version" id="version"></span></h1>
+      <p>
+         Ready. The Squawk overlay on a page will ask this extension for screenshots when you pin a
+         spot.
+      </p>
+      <a
+         href="https://github.com/studypilot/squawk/blob/main/packages/extension/README.md"
+         target="_blank"
+         rel="noreferrer"
+         >How it works and privacy</a
+      >
+      <script type="module" src="./popup.ts"></script>
+   </body>
+</html>

@@ -136,9 +136,10 @@ export const squawkSchema = z.object({
    anchor: anchorSchema.nullable(),
    meta: squawkMetaSchema,
    screenshot: screenshotSchema.nullable(),
-   /** Text of the first comment. */
+   /** Text of the first comment, the squawk itself. */
    body: z.string(),
    author: authorSchema,
+   /** Number of replies, not counting the squawk body. */
    commentCount: z.number().int().nonnegative(),
    createdAt: z.string().datetime(),
    resolvedAt: z.string().datetime().nullable(),
@@ -147,6 +148,7 @@ export const squawkSchema = z.object({
 export type Squawk = z.infer<typeof squawkSchema>
 
 export const squawkDetailSchema = squawkSchema.extend({
+   /** The replies in chronological order. The squawk body itself is `body`, not a reply. */
    comments: z.array(commentSchema)
 })
 export type SquawkDetail = z.infer<typeof squawkDetailSchema>

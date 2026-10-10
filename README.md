@@ -11,19 +11,19 @@ built them.
 - **Agents** read, answer and resolve squawks through a CLI with revocable tokens.
 - **Self-hosted**: one Docker image, Postgres, a volume for screenshots.
 
-In pilot jargon a *squawk* is a defect a crew writes up for maintenance. That is what a comment here is.
+In pilot jargon a _squawk_ is a defect a crew writes up for maintenance. That is what a comment here is.
 
 ## Packages
 
-| Package | What it is |
-| --- | --- |
-| `packages/server` | Hono API, OIDC and device-code login, Postgres via Drizzle, serves the inbox and the overlay |
-| `packages/overlay` | `squawk.js`, the framework-free overlay embedded on reviewed pages |
-| `packages/inbox` | React web UI: sites, squawks, tokens, device approval |
-| `packages/cli` | `squawk` command for scripts and agents, published as `@studypilot/squawk-cli` |
-| `packages/extension` | Chrome extension that supplies pixel-exact screenshots to the overlay |
-| `packages/shared` | The API contract (zod schemas) every package builds against |
-| `skills/squawk` | Claude Code skill that teaches an agent the review workflow |
+| Package              | What it is                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `packages/server`    | Hono API, OIDC and device-code login, Postgres via Drizzle, serves the inbox and the overlay |
+| `packages/overlay`   | `squawk.js`, the framework-free overlay embedded on reviewed pages                           |
+| `packages/inbox`     | React web UI: sites, squawks, tokens, device approval                                        |
+| `packages/cli`       | `squawk` command for scripts and agents, published as `@studypilot/squawk-cli`               |
+| `packages/extension` | Chrome extension that supplies pixel-exact screenshots to the overlay                        |
+| `packages/shared`    | The API contract (zod schemas) every package builds against                                  |
+| `skills/squawk`      | Claude Code skill that teaches an agent the review workflow                                  |
 
 ## Run it
 

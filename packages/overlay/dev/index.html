@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <title>Squawk overlay demo</title>
+      <style>
+         body {
+            margin: 0;
+            font:
+               16px/1.6 system-ui,
+               sans-serif;
+            color: #222;
+            background: #fafafa;
+         }
+         header {
+            position: sticky;
+            top: 0;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            padding: 12px 24px;
+            background: #1f2937;
+            color: #fff;
+         }
+         header a {
+            color: #93c5fd;
+         }
+         main {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 24px;
+         }
+         section {
+            margin: 48px 0;
+            padding: 24px;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+         }
+         .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+         }
+         button {
+            padding: 8px 14px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            font: inherit;
+            cursor: pointer;
+         }
+         button.primary {
+            border-color: #2563eb;
+            background: #2563eb;
+            color: #fff;
+         }
+         canvas {
+            display: block;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+         }
+         .spacer {
+            height: 600px;
+            display: grid;
+            place-items: center;
+            color: #999;
+         }
+         li {
+            padding: 6px 0;
+         }
+      </style>
+      <script>
+         // Pre-load queue: calls made before squawk.js has loaded are replayed on init.
+         window.Squawk = window.Squawk || { q: [] }
+         window.Squawk.q.push(["setMeta", { appVersion: "dev-harness", extra: { harness: true } }])
+      </script>
+      <script
+         type="module"
+         src="/src/main.ts"
+         data-server="http://localhost:3000"
+         data-site="dev-harness"
+         data-ref="local"
+      ></script>
+   </head>
+   <body>
+      <header>
+         <strong>Demo app</strong>
+         <a href="/dev/index.html">Static page</a>
+         <a href="/dev/app.html">Hash-routed app</a>
+         <span style="margin-left: auto; opacity: 0.7">Press C to pin a squawk</span>
+      </header>
+      <main>
+         <h1>Squawk overlay demo</h1>
+         <p>
+            This page is taller than the viewport, has a sticky header, a canvas, a list with
+            <code>data-testid</code> items and a section that re-renders on click. Use it to check
+            pins, anchors and screenshots. It talks to the Squawk server on port 3000.
+         </p>
+
+         <section>
+            <h2 id="buttons">Buttons</h2>
+            <div class="row">
+               <button class="primary" data-testid="save-button">Save changes</button>
+               <button data-testid="cancel-button">Cancel</button>
+               <button>Button without test id</button>
+            </div>
+         </section>
+
+         <section>
+            <h2>Canvas</h2>
+            <canvas id="sketch" width="700" height="240"></canvas>
+         </section>
+
+         <div class="spacer">Scroll further down</div>
+
+         <section>
+            <h2>Re-rendering list</h2>
+            <p>
+               Shuffling replaces every list element and writes the order into the hash, like an SPA
+               would. Pins on items with a test id should follow them.
+            </p>
+            <div class="row">
+               <button id="shuffle">Shuffle list</button>
+               <button id="push-state">pushState to ?view=2</button>
+               <button id="reset">Back to the plain URL</button>
+            </div>
+            <ul id="notes"></ul>
+         </section>
+
+         <section>
+            <h2>Long text</h2>
+            <p>
+               Pins on plain paragraphs fall back to CSS, XPath and the text quote. Edit this
+               paragraph in the dev tools to see the pin switch to a fuzzy match or become orphaned.
+            </p>
+            <p>
+               The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.
+               How vexingly quick daft zebras jump.
+            </p>
+         </section>
+
+         <div class="spacer">End of page</div>
+      </main>
+
+      <script>
+         const canvas = document.getElementById("sketch")
+         const context = canvas.getContext("2d")
+         context.fillStyle = "#e0e7ff"
+         context.fillRect(0, 0, canvas.width, canvas.height)
+         context.strokeStyle = "#4338ca"
+         context.lineWidth = 4
+         context.beginPath()
+         for (let x = 0; x <= canvas.width; x += 10) {
+            context.lineTo(x, 120 + Math.sin(x / 40) * 60)
+         }
+         context.stroke()
+
+         let notes = ["Homework", "Groceries", "Dentist", "Laundry", "Birthday present"]
+         function renderNotes() {
+            const list = document.getElementById("notes")
+            list.replaceChildren(
+               ...notes.map(title => {
+                  const item = document.createElement("li")
+                  item.dataset.testid = `note-${title.toLowerCase().replace(/\s+/g, "-")}`
+                  item.textContent = `${title} (re-rendered ${new Date().toLocaleTimeString()})`
+                  return item
+               })
+            )
+         }
+         renderNotes()
+
+         document.getElementById("shuffle").addEventListener("click", () => {
+            notes = notes.sort(() => Math.random() - 0.5)
+            renderNotes()
+            location.hash = `list?${JSON.stringify({ first: notes[0] })}`
+         })
+         document.getElementById("push-state").addEventListener("click", () => {
+            history.pushState(null, "", "/dev/index.html?view=2")
+         })
+         document.getElementById("reset").addEventListener("click", () => {
+            history.pushState(null, "", "/dev/index.html")
+         })
+      </script>
+   </body>
+</html>

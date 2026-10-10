@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <title>Squawk hash-routed demo</title>
+      <style>
+         body {
+            margin: 0;
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            min-height: 100vh;
+            font:
+               15px/1.5 system-ui,
+               sans-serif;
+         }
+         nav {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 16px;
+            background: #f1f5f9;
+         }
+         nav button {
+            padding: 8px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+         }
+         nav button.active {
+            background: #dbeafe;
+         }
+         #view {
+            padding: 24px 32px;
+         }
+         .card {
+            margin: 12px 0;
+            padding: 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+         }
+      </style>
+      <script
+         type="module"
+         src="/src/main.ts"
+         data-server="http://localhost:3000"
+         data-site="dev-harness"
+         data-ref="local"
+      ></script>
+   </head>
+   <body>
+      <nav id="nav"></nav>
+      <div id="view"></div>
+      <script>
+         // Routes live in the hash as `#path?{json}`, like the studypilot app-renderer.
+         const routes = {
+            notes: { title: "Notes", items: ["Math homework", "History essay", "Physics lab"] },
+            calendar: { title: "Calendar", items: ["Monday: Biology", "Tuesday: Art"] },
+            settings: { title: "Settings", items: ["Theme", "Notifications", "Account"] }
+         }
+
+         function currentRoute() {
+            const hash = location.hash.slice(1)
+            const [path, parameters] = hash.split("?")
+            let state = {}
+            try {
+               state = parameters ? JSON.parse(decodeURIComponent(parameters.split("&")[0])) : {}
+            } catch {
+               state = {}
+            }
+            return { path: routes[path] ? path : "notes", state }
+         }
+
+         function navigate(path, state) {
+            location.hash = `${path}?${JSON.stringify(state)}`
+         }
+
+         function render() {
+            const { path, state } = currentRoute()
+            const route = routes[path]
+            document.getElementById("nav").replaceChildren(
+               ...Object.keys(routes).map(key => {
+                  const button = document.createElement("button")
+                  button.textContent = routes[key].title
+                  button.className = key === path ? "active" : ""
+                  button.dataset.testid = `nav-${key}`
+                  button.onclick = () => navigate(key, { selected: 0 })
+                  return button
+               })
+            )
+            const view = document.getElementById("view")
+            view.replaceChildren(
+               Object.assign(document.createElement("h1"), { textContent: route.title }),
+               ...route.items.map((item, index) => {
+                  const card = document.createElement("div")
+                  card.className = "card"
+                  card.dataset.testid = `${path}-item-${index}`
+                  card.textContent = index === state.selected ? `${item} (selected)` : item
+                  card.onclick = () => navigate(path, { selected: index })
+                  return card
+               })
+            )
+         }
+
+         window.addEventListener("hashchange", render)
+         render()
+      </script>
+   </body>
+</html>
