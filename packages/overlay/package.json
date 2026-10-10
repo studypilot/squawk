@@ -1,0 +1,21 @@
+{
+   "name": "@squawk/overlay",
+   "version": "0.1.0",
+   "private": true,
+   "type": "module",
+   "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "typecheck": "tsc --noEmit",
+      "test": "vitest run"
+   },
+   "dependencies": {
+      "@medv/finder": "^4.0.0",
+      "@squawk/shared": "workspace:*",
+      "html-to-image": "^1.11.0"
+   },
+   "devDependencies": {
+      "jsdom": "^26.0.0",
+      "vite": "^7.1.0"
+   }
+}

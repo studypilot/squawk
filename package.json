@@ -1,0 +1,27 @@
+{
+   "name": "squawk",
+   "version": "0.1.0",
+   "private": true,
+   "description": "Comment on any preview deployment: pin a spot, attach a screenshot, discuss. Team SSO and agent tokens.",
+   "license": "MIT",
+   "type": "module",
+   "packageManager": "pnpm@11.10.0",
+   "engines": { "node": ">=22" },
+   "scripts": {
+      "build": "pnpm -r --filter './packages/*' build",
+      "typecheck": "pnpm -r --filter './packages/*' typecheck",
+      "test": "pnpm -r --filter './packages/*' test",
+      "lint": "eslint .",
+      "format": "prettier --write .",
+      "format:check": "prettier --check ."
+   },
+   "devDependencies": {
+      "@eslint/js": "^9.39.0",
+      "@types/node": "^22.19.0",
+      "eslint": "^9.39.0",
+      "prettier": "^3.6.0",
+      "typescript": "^5.9.0",
+      "typescript-eslint": "^8.46.0",
+      "vitest": "^3.2.0"
+   }
+}
