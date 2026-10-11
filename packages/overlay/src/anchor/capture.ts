@@ -1,4 +1,5 @@
 import { finder } from "@medv/finder"
+import { layoutViewport } from "../viewport"
 import type { Anchor, TextQuote } from "@squawk/shared"
 import { QUOTE_MAX_LENGTH, elementText } from "./text"
 import { uniqueTestId } from "./test-id"
@@ -50,10 +51,7 @@ export function captureAnchor(clicked: Element, clientX: number, clientY: number
          scrollY: window.scrollY
       },
       elementBox: { x: box.left, y: box.top, width: box.width, height: box.height },
-      viewport: {
-         width: Math.max(1, Math.round(window.innerWidth)),
-         height: Math.max(1, Math.round(window.innerHeight))
-      }
+      viewport: layoutViewport()
    }
 }
 

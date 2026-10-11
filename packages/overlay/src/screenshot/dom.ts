@@ -1,4 +1,5 @@
 import { toPng } from "html-to-image"
+import { layoutViewport } from "../viewport"
 
 /**
  * Renders the visible viewport from the DOM with html-to-image: the document element is cloned at
@@ -7,9 +8,10 @@ import { toPng } from "html-to-image"
  */
 export function captureDomScreenshot(exclude: Element): Promise<string> {
    const root = document.documentElement
+   const viewport = layoutViewport()
    return toPng(root, {
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: viewport.width,
+      height: viewport.height,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       backgroundColor: pageBackground(),
       filter: node => node !== exclude,

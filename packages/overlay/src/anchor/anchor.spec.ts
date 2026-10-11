@@ -91,7 +91,10 @@ describe("captureAnchor", () => {
       expect(anchor.rect).toEqual({ x: 0.25, y: 0.75 })
       expect(anchor.page).toEqual({ x: 200, y: 730, scrollX: 0, scrollY: 500 })
       expect(anchor.elementBox).toEqual({ x: 100, y: 200, width: 400, height: 40 })
-      expect(anchor.viewport).toEqual({ width: window.innerWidth, height: window.innerHeight })
+      expect(anchor.viewport).toEqual({
+         width: document.documentElement.clientWidth || window.innerWidth,
+         height: document.documentElement.clientHeight || window.innerHeight
+      })
    })
 
    it("anchors on the nearest ancestor with a unique test id", () => {

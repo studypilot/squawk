@@ -79,6 +79,14 @@ textarea {
    outline: none;
 }
 
+/* iOS Safari zooms into any focused field smaller than 16px, which shifts the page under the
+   pin and shrinks the reported viewport. Keep the composer text at 16px on touch screens. */
+@media (pointer: coarse) {
+   textarea {
+      font-size: 16px;
+   }
+}
+
 textarea:focus {
    border-color: var(--accent);
    box-shadow: 0 0 0 3px var(--accent-soft);

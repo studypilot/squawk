@@ -1,4 +1,5 @@
 import { LIMITS } from "@squawk/shared"
+import { layoutViewport } from "../viewport"
 import { captureDomScreenshot } from "./dom"
 import type { ExtensionBridge } from "./extension"
 
@@ -25,7 +26,7 @@ export async function takeScreenshot(
    bridge: ExtensionBridge,
    overlayHost: HTMLElement
 ): Promise<CapturedScreenshot | null> {
-   const viewportWidth = window.innerWidth
+   const viewportWidth = layoutViewport().width
    let dataUrl: string
    let source: CapturedScreenshot["source"]
    overlayHost.style.setProperty("visibility", "hidden", "important")

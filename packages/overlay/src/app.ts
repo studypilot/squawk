@@ -337,11 +337,14 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       store.set({ mode: "busy" })
       const { siteKey, pageKey } = store.get()
       const anchor = captureAnchor(element, clientX, clientY)
+      // Page facts belong to the moment of the click, not to the send: by then the composer
+      // has focus and on iOS the keyboard and focus zoom have shrunk the visible viewport.
+      const meta = captureMeta(store.get().meta, anchor.viewport)
       const screenshot = await takeScreenshot(bridge, host)
       const card = createComposer({
          anchor,
          screenshot,
-         submit: body => submit({ siteKey, pageKey, body, anchor }, screenshot),
+         submit: body => submit({ siteKey, pageKey, body, anchor, meta }, screenshot),
          close() {
             card.remove()
             if (screenshot) URL.revokeObjectURL(screenshot.previewUrl)
@@ -352,7 +355,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    }
 
    async function submit(
-      draft: { siteKey: string; pageKey: string; body: string; anchor: Anchor },
+      draft: { siteKey: string; pageKey: string; body: string; anchor: Anchor; meta: SquawkMeta },
       screenshot: CapturedScreenshot | null
    ): Promise<void> {
       const input: CreateSquawkInput = {
@@ -360,7 +363,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          page: draft.pageKey,
          body: draft.body,
          anchor: draft.anchor,
-         meta: captureMeta(store.get().meta),
+         meta: draft.meta,
          ...(screenshot
             ? {
                  screenshot: {
@@ -452,12 +455,15 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
 }
 
 /** Facts about the page at capture time; values set through `Squawk.setMeta` win. */
-function captureMeta(declared: SquawkMeta): SquawkMeta {
+function captureMeta(
+   declared: SquawkMeta,
+   viewport: { width: number; height: number }
+): SquawkMeta {
    return {
       url: stripSquawkLinkFromHref(location.href).slice(0, 4000),
       title: document.title.slice(0, 500),
       userAgent: navigator.userAgent.slice(0, 1000),
-      viewport: { width: Math.round(window.innerWidth), height: Math.round(window.innerHeight) },
+      viewport,
       devicePixelRatio: window.devicePixelRatio,
       ...declared
    }
