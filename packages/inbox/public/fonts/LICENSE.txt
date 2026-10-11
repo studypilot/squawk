@@ -1,0 +1,15 @@
+Inter font family
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+The Inter-Regular.woff2, Inter-Medium.woff2 and Inter-SemiBold.woff2 files in this
+directory are licensed under the SIL Open Font License, Version 1.1.
+
+This license is available with a FAQ at: https://openfontlicense.org
+Full license text: https://github.com/rsms/inter/blob/master/LICENSE.txt
+
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007 (summary of the permissions)
+
+The fonts may be used, studied, modified and redistributed freely, including bundled
+with software, as long as they are not sold by themselves, the copyright and license
+notice is kept with any copy, and derived versions do not use the reserved font name
+"Inter" without permission. The fonts are provided "as is" without warranty of any kind.

@@ -1,4 +1,5 @@
 import { anchorTarget } from "../anchor/capture"
+import { uniqueTestId } from "../anchor/test-id"
 import { h } from "./dom"
 
 export interface PinModeHandlers {
@@ -12,13 +13,20 @@ export interface PinMode {
    stop(): void
 }
 
+/** Below this distance from the top edge the chip moves inside the outline. */
+const CHIP_CLEARANCE = 28
+
 /**
  * A transparent full-screen layer with a crosshair cursor. It finds the page element below the
  * pointer by briefly disabling its own pointer events and asking `elementFromPoint`.
  */
 export function createPinMode(overlayHost: HTMLElement, handlers: PinModeHandlers): PinMode {
-   const highlight = h("div", { class: "highlight", hidden: true })
-   const hint = h("div", { class: "pin-hint" }, ["Click an element to pin a squawk. Esc cancels."])
+   const chip = h("span", { class: "highlight-chip" })
+   const highlight = h("div", { class: "highlight", hidden: true }, [chip])
+   const hint = h("div", { class: "pin-hint" }, [
+      "Click an element to pin a squawk",
+      h("kbd", {}, ["Esc"])
+   ])
    const layer = h("div", { class: "pin-layer" })
    const element = h("div", { class: "pin-mode", hidden: true }, [layer, highlight, hint])
    let frame = 0
@@ -35,13 +43,16 @@ export function createPinMode(overlayHost: HTMLElement, handlers: PinModeHandler
       const found = pageElementAt(clientX, clientY)
       highlight.hidden = !found
       if (!found) return
-      const box = anchorTarget(found).getBoundingClientRect()
+      const target = anchorTarget(found)
+      const box = target.getBoundingClientRect()
       Object.assign(highlight.style, {
          left: `${box.left}px`,
          top: `${box.top}px`,
          width: `${box.width}px`,
          height: `${box.height}px`
       })
+      highlight.classList.toggle("is-near-top", box.top < CHIP_CLEARANCE)
+      chip.textContent = uniqueTestId(target) ?? target.localName
    }
 
    layer.addEventListener("pointermove", event => {

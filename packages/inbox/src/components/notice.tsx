@@ -1,4 +1,5 @@
 import { ApiError } from "../api/client"
+import { AlertIcon } from "./icons"
 
 export function LoadingNotice({ label = "Loading" }: { label?: string }) {
    return (
@@ -14,7 +15,8 @@ export function ErrorNotice({ error }: { error: Error }) {
    }
    return (
       <p className="notice notice-error" role="alert">
-         {error.message}
+         <AlertIcon size={15} />
+         <span>{error.message}</span>
       </p>
    )
 }

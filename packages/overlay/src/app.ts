@@ -1,5 +1,12 @@
 import { LIMITS } from "@squawk/shared"
-import type { Anchor, CreateSquawkInput, Squawk, SquawkMeta, SquawkStatus } from "@squawk/shared"
+import type {
+   Anchor,
+   Author,
+   CreateSquawkInput,
+   Squawk,
+   SquawkMeta,
+   SquawkStatus
+} from "@squawk/shared"
 import { captureAnchor } from "./anchor/capture"
 import { resolveAnchor } from "./anchor/resolve"
 import { ApiError, createApiClient } from "./api"
@@ -17,6 +24,7 @@ import { createExtensionBridge } from "./screenshot/extension"
 import { createStore } from "./state"
 import type { OverlayState } from "./state"
 import styles from "./styles.css?inline"
+import { copyText } from "./ui/clipboard"
 import { createComposer } from "./ui/composer"
 import { createLauncher } from "./ui/launcher"
 import { createPanel } from "./ui/panel"
@@ -49,6 +57,7 @@ const MUTATION_DEBOUNCE_MS = 250
 /** Squawks are listed in pages of 200; five pages cover any realistic preview site. */
 const LIST_PAGE_LIMIT = 200
 const LIST_MAX_PAGES = 5
+const FONT_LINK_ID = "squawk-inter"
 
 export function createOverlay(config: OverlayConfig, version: string): SquawkApi {
    const store = createStore<OverlayState>({
@@ -86,6 +95,8 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       window.addEventListener("load", detectExtension, { once: true })
    }
 
+   loadFont(config.serverOrigin)
+
    const host = document.createElement("div")
    host.id = "squawk-root"
    const hostStyle = {
@@ -107,7 +118,11 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    }
 
    const toast = createToast()
-   const pins = createPinsLayer(squawkId => openThread(squawkId))
+   const pins = createPinsLayer({
+      select: squawkId => openThread(squawkId),
+      hover: squawkId => panel.setHoveredPin(squawkId),
+      orphans: squawks => panel.setOrphans(squawks)
+   })
    const pinMode = createPinMode(host, {
       pick: (element, clientX, clientY) => void compose(element, clientX, clientY),
       cancel: () => stopPinMode()
@@ -152,6 +167,8 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    function render(state: OverlayState): void {
       launcher.render(state)
       panel.render(state)
+      pins.select(state.threadId)
+      pins.element.classList.toggle("is-beside-panel", state.panel !== "closed")
       const nextPins = pinnedSquawks(state)
       const pinsChanged =
          nextPins.length !== shownPins.length ||
@@ -183,17 +200,24 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       return squawks
    }
 
+   let loadedSite: string | null = null
+   let currentUser: Author | null = null
+
    async function refresh(): Promise<void> {
       const { token, siteKey } = store.get()
       if (!token) return
+      panel.setLoaded(loadedSite === siteKey)
       try {
          const squawks = await fetchSiteSquawks(siteKey)
          if (store.get().siteKey !== siteKey || store.get().token !== token) return
          // Keep unchanged items identical so the pins and the list do not re-render needlessly.
          const previous = new Map(store.get().squawks.map(squawk => [squawk.id, squawk]))
          store.set({ squawks: squawks.map(squawk => sameOrNew(previous.get(squawk.id), squawk)) })
+         loadedSite = siteKey
+         panel.setLoaded(true)
          const { panel: view, threadId } = store.get()
          if (view === "thread" && threadId) await loadThread(threadId)
+         if (!currentUser) currentUser = (await api.me()).principal
       } catch {
          // Polling stays quiet; a 401 already switched the panel to sign-in.
       }
@@ -303,6 +327,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          onState: login => store.set({ login }),
          onToken(token) {
             writeToken(config.serverOrigin, token)
+            currentUser = null
             store.set({ token, login: null })
             refreshNow()
             if (pendingThreadId) openThread(pendingThreadId)
@@ -324,16 +349,18 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       if (!state.token) return openPanel()
       if (state.mode !== "idle") return
       store.set({ mode: "pin", panel: "closed", threadId: null, thread: null })
+      pins.element.classList.add("is-passive")
       pinMode.start()
    }
 
    function stopPinMode(): void {
       pinMode.stop()
+      pins.element.classList.remove("is-passive")
       if (store.get().mode === "pin") store.set({ mode: "idle" })
    }
 
    async function compose(element: Element, clientX: number, clientY: number): Promise<void> {
-      pinMode.stop()
+      stopPinMode()
       store.set({ mode: "busy" })
       const { siteKey, pageKey } = store.get()
       const anchor = captureAnchor(element, clientX, clientY)
@@ -344,11 +371,12 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       const card = createComposer({
          anchor,
          screenshot,
+         user: currentUser,
          submit: body => submit({ siteKey, pageKey, body, anchor, meta }, screenshot),
          close() {
             card.remove()
             if (screenshot) URL.revokeObjectURL(screenshot.previewUrl)
-            store.set({ mode: "idle" })
+            if (store.get().mode === "busy") store.set({ mode: "idle" })
          }
       })
       shadow.insertBefore(card, toast.element)
@@ -379,7 +407,10 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       store.set({
          squawks: [created, ...store.get().squawks.filter(squawk => squawk.id !== created.id)]
       })
-      toast.show(`Squawk #${created.number} sent`)
+      toast.show(`Squawk #${created.number} filed`, {
+         label: "View",
+         run: () => openThread(created.id)
+      })
    }
 
    window.addEventListener("keydown", event => {
@@ -479,19 +510,14 @@ function isEditable(target: EventTarget | undefined): boolean {
    return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
 }
 
-/** Clipboard API where allowed, otherwise the legacy copy command (plain-http preview hosts). */
-async function copyText(text: string, shadow: ShadowRoot): Promise<boolean> {
-   try {
-      await navigator.clipboard.writeText(text)
-      return true
-   } catch {
-      const field = document.createElement("textarea")
-      field.value = text
-      field.style.cssText = "position:fixed;opacity:0;pointer-events:none"
-      shadow.append(field)
-      field.select()
-      const copied = document.execCommand("copy")
-      field.remove()
-      return copied
-   }
+/** Inter is served next to the inbox; the system stack stays the fallback until it arrives. */
+function loadFont(serverOrigin: string): void {
+   if (document.getElementById(FONT_LINK_ID)) return
+   const link = document.createElement("link")
+   link.id = FONT_LINK_ID
+   link.rel = "stylesheet"
+   // Anonymous CORS lets the DOM screenshot read the sheet's rules instead of logging errors.
+   link.crossOrigin = "anonymous"
+   link.href = `${serverOrigin}/fonts/inter.css`
+   document.head.append(link)
 }

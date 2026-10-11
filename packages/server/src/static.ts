@@ -50,7 +50,11 @@ function cacheControlFor(requestPath: string): string {
 async function sendFile(c: Context, filePath: string, cacheControl: string): Promise<Response> {
    const fileStats = await stat(filePath)
    const etag = `W/"${fileStats.size.toString(16)}-${Math.floor(fileStats.mtimeMs).toString(16)}"`
-   const headers = { ETag: etag, "Cache-Control": cacheControl }
+   const headers: Record<string, string> = { ETag: etag, "Cache-Control": cacheControl }
+   // The overlay loads Inter from here into whatever origin hosts the preview; fonts are
+   // fetched in CORS mode by browsers, so without this header every foreign page falls back.
+   if (filePath.includes(`${path.sep}fonts${path.sep}`))
+      headers["Access-Control-Allow-Origin"] = "*"
    if (c.req.header("if-none-match") === etag) return c.body(null, 304, headers)
 
    const contentType = contentTypes[path.extname(filePath).toLowerCase()]

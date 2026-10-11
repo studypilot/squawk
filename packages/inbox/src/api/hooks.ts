@@ -146,6 +146,8 @@ export interface PagedQueryResult<T> {
    loading: boolean
    hasMore: boolean
    loadMore: () => void
+   /** Re-reads the pages loaded so far and swaps the items in place, like a poll. */
+   reload: () => void
 }
 
 interface PagedState<T> extends CursorPage<T> {
@@ -211,7 +213,7 @@ export function usePagedQuery<T>(
    const busy = !isCurrent || state.loading
    const loadedPages = isCurrent ? state.pages : 0
 
-   usePolling(key, async () => {
+   const refreshLoadedPages = useCallback(async (): Promise<void> => {
       if (busy || loadedPages === 0) {
          return
       }
@@ -233,7 +235,13 @@ export function usePagedQuery<T>(
             ? current
             : { key, items, nextCursor, pages, loading: false }
       )
-   })
+   }, [key, busy, loadedPages, latestLoadPage])
+
+   usePolling(key, refreshLoadedPages)
+
+   const reload = useCallback(() => {
+      void refreshLoadedPages()
+   }, [refreshLoadedPages])
 
    const loadMore = useCallback(() => {
       if (cursor === null || busy) {
@@ -267,6 +275,7 @@ export function usePagedQuery<T>(
       error: isCurrent ? state.error : undefined,
       loading: busy,
       hasMore: cursor !== null,
-      loadMore
+      loadMore,
+      reload
    }
 }

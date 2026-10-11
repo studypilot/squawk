@@ -2,7 +2,11 @@ import { useState } from "react"
 import { createBrowserRouter, Link, useRouteError } from "react-router"
 import type { RouteObject } from "react-router"
 import { RouterProvider } from "react-router/dom"
+import { PlaneMark } from "./assets/plane-mark"
+import { EmptyState } from "./components/empty-state"
+import { AlertIcon } from "./components/icons"
 import { Layout } from "./components/layout"
+import { ToastProvider } from "./components/toast"
 import { DevicePage } from "./pages/device"
 import { SitePage } from "./pages/site"
 import { SitesPage } from "./pages/sites"
@@ -11,12 +15,11 @@ import { TokensPage } from "./pages/tokens"
 
 function NotFoundPage() {
    return (
-      <>
-         <h1>Not found</h1>
-         <p>
-            This page does not exist. <Link to="/">Back to the sites</Link>
-         </p>
-      </>
+      <EmptyState icon={<PlaneMark size={22} />} title="Not found" hint="This page does not exist.">
+         <Link to="/" className="button button-secondary">
+            Back to the sites
+         </Link>
+      </EmptyState>
    )
 }
 
@@ -24,13 +27,15 @@ function RouteErrorPage() {
    const error = useRouteError()
    return (
       <main className="content">
-         <h1>Something went wrong</h1>
-         <p className="notice notice-error" role="alert">
-            {error instanceof Error ? error.message : "An unexpected error occurred."}
-         </p>
-         <p>
-            <a href="/">Reload the inbox</a>
-         </p>
+         <EmptyState
+            icon={<AlertIcon size={22} />}
+            title="Something went wrong"
+            hint={error instanceof Error ? error.message : "An unexpected error occurred."}
+         >
+            <a href="/" className="button button-secondary">
+               Reload the inbox
+            </a>
+         </EmptyState>
       </main>
    )
 }
@@ -53,5 +58,9 @@ export const routes: RouteObject[] = [
 
 export function App() {
    const [router] = useState(() => createBrowserRouter(routes))
-   return <RouterProvider router={router} />
+   return (
+      <ToastProvider>
+         <RouterProvider router={router} />
+      </ToastProvider>
+   )
 }

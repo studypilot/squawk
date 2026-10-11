@@ -1,0 +1,121 @@
+/* Design tokens — shared names with the overlay (see docs/plans and the UI brief). */
+
+:root {
+   color-scheme: light;
+   --sq-bg: #fafafa;
+   --sq-surface: #ffffff;
+   --sq-surface-2: #f4f5f7;
+   --sq-surface-3: #eceef1;
+   --sq-border: #e6e8eb;
+   --sq-border-strong: #d2d6dc;
+   --sq-text: #0f1419;
+   --sq-text-2: #5b6470;
+   --sq-text-3: #8a93a0;
+   --sq-primary: #2d98da;
+   --sq-primary-hover: #2487c6;
+   --sq-primary-soft: rgba(45, 152, 218, 0.12);
+   --sq-primary-glow: 0 0 15px -5px rgba(45, 152, 218, 0.55);
+   --sq-on-primary: #ffffff;
+   --sq-success: #20bf6b;
+   --sq-success-soft: rgba(32, 191, 107, 0.14);
+   --sq-success-text: #15804a;
+   --sq-danger: #eb4765;
+   --sq-danger-soft: rgba(235, 71, 101, 0.12);
+   --sq-warning: #f7bf31;
+   --sq-warning-soft: rgba(247, 191, 49, 0.18);
+   --sq-warning-text: #7a5a00;
+   --sq-attention: #e37928;
+   --sq-shadow-1: 0 1px 2px rgba(15, 20, 25, 0.06), 0 1px 1px rgba(15, 20, 25, 0.04);
+   --sq-shadow-2: 0 4px 12px rgba(15, 20, 25, 0.08), 0 1px 3px rgba(15, 20, 25, 0.06);
+   --sq-shadow-3: 0 16px 40px rgba(15, 20, 25, 0.16), 0 2px 6px rgba(15, 20, 25, 0.08);
+   --sq-radius-lg: 8px;
+   --sq-radius-md: 6px;
+   --sq-radius-sm: 3px;
+   --sq-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+   --sq-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+   --sq-toast-bg: #0f1419;
+   --sq-toast-text: #ffffff;
+   --sq-content-width: 1120px;
+   --sq-gutter: 32px;
+   --sq-top-bar-height: 52px;
+   --sq-duration: 140ms;
+   --sq-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+   :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --sq-bg: #0f1115;
+      --sq-surface: #16181d;
+      --sq-surface-2: #1d2026;
+      --sq-surface-3: #262a31;
+      --sq-border: #262a31;
+      --sq-border-strong: #343941;
+      --sq-text: #e9ecf1;
+      --sq-text-2: #a3abb6;
+      --sq-text-3: #6f7884;
+      --sq-primary: #4aa8e6;
+      --sq-primary-hover: #63b6ea;
+      --sq-primary-soft: rgba(74, 168, 230, 0.16);
+      --sq-primary-glow: 0 0 15px -5px rgba(74, 168, 230, 0.55);
+      --sq-on-primary: #08141c;
+      --sq-success: #34d07d;
+      --sq-success-soft: rgba(52, 208, 125, 0.14);
+      --sq-success-text: #34d07d;
+      --sq-danger: #f0607a;
+      --sq-danger-soft: rgba(240, 96, 122, 0.14);
+      --sq-warning: #f7c94f;
+      --sq-warning-soft: rgba(247, 201, 79, 0.16);
+      --sq-warning-text: #f7c94f;
+      --sq-attention: #ec8b42;
+      --sq-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.25);
+      --sq-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+      --sq-shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+      --sq-toast-bg: #e9ecf1;
+      --sq-toast-text: #0f1115;
+   }
+}
+
+:root[data-theme="dark"] {
+   color-scheme: dark;
+   --sq-bg: #0f1115;
+   --sq-surface: #16181d;
+   --sq-surface-2: #1d2026;
+   --sq-surface-3: #262a31;
+   --sq-border: #262a31;
+   --sq-border-strong: #343941;
+   --sq-text: #e9ecf1;
+   --sq-text-2: #a3abb6;
+   --sq-text-3: #6f7884;
+   --sq-primary: #4aa8e6;
+   --sq-primary-hover: #63b6ea;
+   --sq-primary-soft: rgba(74, 168, 230, 0.16);
+   --sq-primary-glow: 0 0 15px -5px rgba(74, 168, 230, 0.55);
+   --sq-on-primary: #08141c;
+   --sq-success: #34d07d;
+   --sq-success-soft: rgba(52, 208, 125, 0.14);
+   --sq-success-text: #34d07d;
+   --sq-danger: #f0607a;
+   --sq-danger-soft: rgba(240, 96, 122, 0.14);
+   --sq-warning: #f7c94f;
+   --sq-warning-soft: rgba(247, 201, 79, 0.16);
+   --sq-warning-text: #f7c94f;
+   --sq-attention: #ec8b42;
+   --sq-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.25);
+   --sq-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+   --sq-shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+   --sq-toast-bg: #e9ecf1;
+   --sq-toast-text: #0f1115;
+}
+
+@media (max-width: 640px) {
+   :root {
+      --sq-gutter: 16px;
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   :root {
+      --sq-duration: 0ms;
+   }
+}

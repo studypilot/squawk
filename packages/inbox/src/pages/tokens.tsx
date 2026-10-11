@@ -6,26 +6,48 @@ import { createToken, listTokens, revokeToken } from "../api/client"
 import type { CreateTokenInput } from "../api/client"
 import { useQuery } from "../api/hooks"
 import { Author } from "../components/author"
-import { ErrorNotice, LoadingNotice } from "../components/notice"
+import { EmptyState } from "../components/empty-state"
+import { KeyIcon } from "../components/icons"
+import { ErrorNotice } from "../components/notice"
 import { RelativeTime } from "../components/relative-time"
+import { Skeleton, SkeletonRows } from "../components/skeleton"
+import { useToast } from "../components/toast"
 import { TokenSecret } from "../components/token-secret"
+import { formatDateTime } from "../lib/format"
 
 export function TokensPage() {
    const tokens = useQuery("tokens", listTokens)
 
    return (
       <>
-         <h1>Tokens</h1>
-         <p className="muted">
-            Overlay and CLI logins create login tokens. Agent tokens are created here or with the
-            CLI and act on behalf of a coding agent.
-         </p>
+         <header className="page-header">
+            <div>
+               <h1 className="page-title">Tokens</h1>
+               <p className="page-subtitle">
+                  Overlay and CLI logins create login tokens. Agent tokens are created here or with
+                  the CLI and act on behalf of a coding agent.
+               </p>
+            </div>
+         </header>
          <CreateTokenForm onCreated={tokens.reload} />
-         <h2>All tokens</h2>
+         <h2 className="section-title">All tokens</h2>
          {tokens.error !== undefined && <ErrorNotice error={tokens.error} />}
-         {tokens.data === undefined && tokens.error === undefined && <LoadingNotice />}
+         {tokens.data === undefined && tokens.error === undefined && (
+            <div className="table-card">
+               <SkeletonRows rows={3}>
+                  <Skeleton width="20%" height={14} />
+                  <Skeleton width={110} height={18} radius={3} />
+                  <Skeleton width={44} height={20} radius={6} />
+                  <Skeleton width="15%" />
+               </SkeletonRows>
+            </div>
+         )}
          {tokens.data !== undefined && tokens.data.length === 0 && (
-            <p className="notice">No tokens yet.</p>
+            <EmptyState
+               icon={<KeyIcon size={22} />}
+               title="No tokens yet."
+               hint="Login tokens appear after the first overlay or CLI sign-in."
+            />
          )}
          {tokens.data !== undefined && tokens.data.length > 0 && (
             <TokenTable tokens={tokens.data} onRevoked={tokens.reload} />
@@ -36,8 +58,8 @@ export function TokensPage() {
 
 function TokenTable({ tokens, onRevoked }: { tokens: Token[]; onRevoked: () => void }) {
    return (
-      <div className="table-wrapper">
-         <table className="table">
+      <div className="table-card">
+         <table className="table tokens-table">
             <thead>
                <tr>
                   <th scope="col">Name</th>
@@ -56,44 +78,51 @@ function TokenTable({ tokens, onRevoked }: { tokens: Token[]; onRevoked: () => v
             <tbody>
                {tokens.map(token => (
                   <tr key={token.id} className={token.revokedAt === null ? undefined : "revoked"}>
-                     <td>{token.name}</td>
-                     <td className="mono">{token.prefix}</td>
+                     <td className="token-name">
+                        <span>{token.name}</span>
+                     </td>
                      <td>
-                        <span className={`badge badge-${token.kind}`}>{token.kind}</span>
+                        <code className="code">{token.prefix}</code>
+                     </td>
+                     <td>
+                        <span className={`chip chip-${token.kind}`}>{token.kind}</span>
                      </td>
                      <td>
                         {token.siteKey === null ? (
-                           <span className="muted">all sites</span>
+                           <span className="text-3">all sites</span>
                         ) : (
                            <span className="mono">{token.siteKey}</span>
                         )}
                      </td>
                      <td>
-                        <Author author={token.createdBy} />
+                        <Author author={token.createdBy} showAvatar />
                      </td>
-                     <td>
+                     <td className="text-2">
                         <RelativeTime value={token.createdAt} />
                      </td>
-                     <td>
+                     <td className="text-2">
                         {token.expiresAt === null ? (
-                           <span className="muted">never</span>
+                           <span className="text-3">never</span>
                         ) : (
                            <RelativeTime value={token.expiresAt} />
                         )}
                      </td>
-                     <td>
+                     <td className="text-2">
                         {token.lastUsedAt === null ? (
-                           <span className="muted">never</span>
+                           <span className="text-3">never</span>
                         ) : (
                            <RelativeTime value={token.lastUsedAt} />
                         )}
                      </td>
-                     <td>
+                     <td className="numeric">
                         {token.revokedAt === null ? (
                            <RevokeButton token={token} onRevoked={onRevoked} />
                         ) : (
-                           <span className="muted">
-                              Revoked <RelativeTime value={token.revokedAt} />
+                           <span
+                              className="text-3"
+                              title={`Revoked ${formatDateTime(token.revokedAt)}`}
+                           >
+                              Revoked
                            </span>
                         )}
                      </td>
@@ -106,33 +135,54 @@ function TokenTable({ tokens, onRevoked }: { tokens: Token[]; onRevoked: () => v
 }
 
 function RevokeButton({ token, onRevoked }: { token: Token; onRevoked: () => void }) {
+   const [confirming, setConfirming] = useState(false)
    const [revoking, setRevoking] = useState(false)
+   const showToast = useToast()
 
    async function revoke() {
-      const confirmed = window.confirm(
-         `Revoke the token "${token.name}"? Anything using it loses access immediately.`
-      )
-      if (!confirmed) {
-         return
-      }
       setRevoking(true)
       try {
          await revokeToken(token.id)
+         showToast(`Revoked “${token.name}”`)
          onRevoked()
       } catch (caught) {
-         window.alert(caught instanceof Error ? caught.message : "Revoking failed.")
+         showToast(caught instanceof Error ? caught.message : "Revoking failed.")
       } finally {
          setRevoking(false)
+         setConfirming(false)
       }
+   }
+
+   if (confirming) {
+      return (
+         <span className="inline-confirm" role="group" aria-label={`Revoke ${token.name}?`}>
+            <span className="inline-confirm-question">Revoke?</span>
+            <button
+               type="button"
+               className="button button-danger button-small"
+               disabled={revoking}
+               onClick={() => void revoke()}
+            >
+               Yes
+            </button>
+            <button
+               type="button"
+               className="button button-ghost button-small"
+               disabled={revoking}
+               onClick={() => setConfirming(false)}
+            >
+               No
+            </button>
+         </span>
+      )
    }
 
    return (
       <button
          type="button"
-         className="danger"
-         disabled={revoking}
+         className="button button-ghost button-small button-danger-text"
          aria-label={`Revoke ${token.name}`}
-         onClick={revoke}
+         onClick={() => setConfirming(true)}
       >
          Revoke
       </button>
@@ -179,13 +229,18 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
    }
 
    return (
-      <section className="card">
-         <h2>Create agent token</h2>
+      <section className="card create-token-card">
+         <h2 className="card-title">Create agent token</h2>
+         <p className="card-hint">
+            Give it to a coding agent so it can read, answer and resolve squawks. Scope it to one
+            site key when you can.
+         </p>
          {secret !== null && <TokenSecret secret={secret} onDismiss={() => setSecret(null)} />}
          <form className="form-grid" onSubmit={submit}>
-            <label>
-               Name
+            <label className="field">
+               <span className="field-label">Name</span>
                <input
+                  className="input"
                   value={name}
                   required
                   maxLength={LIMITS.tokenNameMaxLength}
@@ -193,18 +248,24 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
                   onChange={event => setName(event.target.value)}
                />
             </label>
-            <label>
-               Site key <span className="muted">(optional)</span>
+            <label className="field">
+               <span className="field-label">
+                  Site key <span className="field-optional">optional</span>
+               </span>
                <input
+                  className="input mono"
                   value={siteKey}
                   maxLength={LIMITS.siteKeyMaxLength}
                   placeholder="all sites"
                   onChange={event => setSiteKey(event.target.value)}
                />
             </label>
-            <label>
-               Expires after days <span className="muted">(optional)</span>
+            <label className="field">
+               <span className="field-label">
+                  Expires after days <span className="field-optional">optional</span>
+               </span>
                <input
+                  className="input"
                   type="number"
                   min={1}
                   max={3650}
@@ -215,7 +276,7 @@ function CreateTokenForm({ onCreated }: { onCreated: () => void }) {
                />
             </label>
             <div className="form-actions">
-               <button type="submit" disabled={creating}>
+               <button type="submit" className="button button-primary" disabled={creating}>
                   Create token
                </button>
             </div>

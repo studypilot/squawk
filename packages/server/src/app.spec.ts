@@ -53,6 +53,18 @@ describe("static files and health", () => {
       expect(await spaRoute.text()).toContain("<title>Inbox</title>")
    })
 
+   it("lets any origin load the fonts, nothing else", async () => {
+      await mkdir(path.join(context.publicDir, "fonts"), { recursive: true })
+      await writeFile(path.join(context.publicDir, "fonts", "inter.css"), "@font-face {}")
+
+      const font = await context.request("GET", "/fonts/inter.css")
+      expect(font.status).toBe(200)
+      expect(font.headers.get("access-control-allow-origin")).toBe("*")
+
+      const script = await context.request("GET", "/squawk.js")
+      expect(script.headers.get("access-control-allow-origin")).toBeNull()
+   })
+
    it("never serves files outside the public directory", async () => {
       const response = await context.request("GET", "/..%2f..%2fetc%2fpasswd")
       expect(await response.text()).not.toContain("root:")

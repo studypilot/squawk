@@ -1,26 +1,25 @@
 import type { Author as AuthorValue } from "@squawk/shared"
+import { Avatar } from "./avatar"
+import type { AvatarSize } from "./avatar"
+
+export function authorName(author: AuthorValue): string {
+   return author.kind === "agent" ? author.name : (author.name ?? author.email)
+}
 
 export function Author({
    author,
-   showAvatar = false
+   showAvatar = false,
+   avatarSize = 20
 }: {
    author: AuthorValue
    showAvatar?: boolean
+   avatarSize?: AvatarSize
 }) {
-   if (author.kind === "agent") {
-      return (
-         <span className="author">
-            <span className="author-name">{author.name}</span>
-            <span className="agent-label">agent</span>
-         </span>
-      )
-   }
    return (
-      <span className="author" title={author.email}>
-         {showAvatar && author.avatarUrl !== null && (
-            <img className="avatar" src={author.avatarUrl} alt="" referrerPolicy="no-referrer" />
-         )}
-         <span className="author-name">{author.name ?? author.email}</span>
+      <span className="author" title={author.kind === "user" ? author.email : undefined}>
+         {showAvatar && <Avatar author={author} size={avatarSize} />}
+         <span className="author-name">{authorName(author)}</span>
+         {author.kind === "agent" && <span className="chip chip-agent">agent</span>}
       </span>
    )
 }

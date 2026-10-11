@@ -1,0 +1,155 @@
+/* Reset, typography and text utilities. */
+
+*,
+*::before,
+*::after {
+   box-sizing: border-box;
+}
+
+html,
+body {
+   margin: 0;
+}
+
+html {
+   background: var(--sq-bg);
+   -webkit-text-size-adjust: 100%;
+}
+
+body {
+   background: var(--sq-bg);
+   color: var(--sq-text);
+   font-family: var(--sq-font);
+   font-size: 14px;
+   line-height: 1.5;
+   letter-spacing: -0.01em;
+   font-feature-settings: "cv11", "ss01";
+   -webkit-font-smoothing: antialiased;
+   -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3 {
+   font-weight: 600;
+   line-height: 1.25;
+   margin: 0;
+}
+
+p {
+   margin: 0;
+}
+
+a {
+   color: var(--sq-primary);
+   text-decoration: none;
+   transition: color var(--sq-duration) var(--sq-ease);
+}
+
+a:hover {
+   color: var(--sq-primary-hover);
+}
+
+button,
+input,
+select,
+textarea {
+   font: inherit;
+   letter-spacing: inherit;
+   color: inherit;
+}
+
+button {
+   background: none;
+   border: 0;
+   padding: 0;
+   cursor: pointer;
+}
+
+img {
+   display: block;
+   max-width: 100%;
+}
+
+code,
+pre,
+kbd,
+.mono {
+   font-family: var(--sq-mono);
+   font-size: 12.5px;
+   letter-spacing: 0;
+}
+
+pre {
+   margin: 0;
+}
+
+:focus {
+   outline: none;
+}
+
+:focus-visible {
+   outline: 2px solid var(--sq-primary-soft);
+   outline-offset: 0;
+   box-shadow:
+      0 0 0 1px var(--sq-primary),
+      0 0 0 4px var(--sq-primary-soft);
+   border-radius: var(--sq-radius-md);
+}
+
+::selection {
+   background: var(--sq-primary-soft);
+}
+
+.text-2 {
+   color: var(--sq-text-2);
+}
+
+.text-3 {
+   color: var(--sq-text-3);
+}
+
+.break {
+   overflow-wrap: anywhere;
+}
+
+.rotate-180 {
+   transform: rotate(180deg);
+}
+
+.visually-hidden {
+   position: absolute;
+   width: 1px;
+   height: 1px;
+   overflow: hidden;
+   clip: rect(0 0 0 0);
+   white-space: nowrap;
+}
+
+.error-text {
+   color: var(--sq-danger);
+   font-size: 13px;
+}
+
+.notice {
+   align-items: center;
+   color: var(--sq-text-2);
+   display: flex;
+   font-size: 13px;
+   gap: 8px;
+   padding: 12px 0;
+}
+
+.notice-error {
+   color: var(--sq-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+   *,
+   *::before,
+   *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+   }
+}

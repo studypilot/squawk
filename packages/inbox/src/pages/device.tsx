@@ -1,10 +1,13 @@
 import { useState } from "react"
 import { useSearchParams } from "react-router"
+import { PlaneMark } from "../assets/plane-mark"
 import { ApiError, decideDevice, getDeviceInfo } from "../api/client"
 import type { DeviceInfo } from "../api/client"
 import { useQuery } from "../api/hooks"
-import { ErrorNotice, LoadingNotice } from "../components/notice"
+import { CheckIcon, CloseIcon, TerminalIcon } from "../components/icons"
+import { ErrorNotice } from "../components/notice"
 import { RelativeTime } from "../components/relative-time"
+import { Skeleton } from "../components/skeleton"
 import { formatUserCode, isCompleteUserCode } from "../lib/format"
 
 type Decision = "approve" | "deny"
@@ -24,24 +27,34 @@ export function DevicePage() {
    const info = useQuery(complete ? `device:${code}` : null, () => getDeviceInfo(code))
 
    if (decided !== null) {
+      const approved = decided === "approve"
       return (
-         <section className="card device-card">
-            <h1>{decided === "approve" ? "Login approved" : "Login denied"}</h1>
-            <p>You can close this tab.</p>
+         <section className="card device-card device-card-done">
+            <span className={approved ? "device-result device-result-ok" : "device-result"}>
+               {approved ? <CheckIcon size={22} /> : <CloseIcon size={22} />}
+            </span>
+            <h1 className="device-title">{approved ? "Device approved" : "Login denied"}</h1>
+            <p className="text-2">
+               {approved
+                  ? "The overlay or CLI is signed in as you."
+                  : "Nothing was granted. The code is no longer valid."}
+            </p>
+            <p className="text-2">You can close this tab.</p>
          </section>
       )
    }
 
    return (
       <section className="card device-card">
-         <h1>Approve a device</h1>
-         <p className="muted">
+         <PlaneMark size={28} className="device-mark" />
+         <h1 className="device-title">Approve a device</h1>
+         <p className="text-2 device-intro">
             Enter the code shown in the overlay or the CLI to let it act on your behalf.
          </p>
-         <label className="device-code-label">
-            Code
+         <label className="field device-code-field">
+            <span className="field-label">Code</span>
             <input
-               className="mono device-code-input"
+               className="input mono device-code-input"
                value={code}
                autoComplete="off"
                spellCheck={false}
@@ -49,7 +62,15 @@ export function DevicePage() {
                onChange={event => setCode(formatUserCode(event.target.value))}
             />
          </label>
-         {complete && info.loading && <LoadingNotice />}
+         {complete && info.loading && info.data === undefined && (
+            <div className="device-requester" role="status" aria-label="Loading">
+               <Skeleton width={32} height={32} radius={8} />
+               <span className="skeleton-stack">
+                  <Skeleton width={160} height={13} />
+                  <Skeleton width={100} />
+               </span>
+            </div>
+         )}
          {info.error !== undefined &&
             (isUnknownCode(info.error) ? (
                <p className="notice notice-error" role="alert">
@@ -101,20 +122,32 @@ function DeviceDecision({
 
    return (
       <div className="device-decision">
-         <p>
-            <strong>{info.kind === "overlay" ? "Overlay" : "CLI"}</strong> on{" "}
-            <span className="mono">{info.label}</span>
-         </p>
-         <p className="muted">
-            Code expires <RelativeTime value={info.expiresAt} />.
-         </p>
+         <div className="device-requester">
+            <span className="device-requester-icon">
+               {info.kind === "overlay" ? <PlaneMark size={16} /> : <TerminalIcon size={16} />}
+            </span>
+            <span className="device-requester-text">
+               <span>
+                  {info.kind === "overlay" ? "Overlay" : "CLI"} on{" "}
+                  <span className="mono">{info.label}</span>
+               </span>
+               <span className="text-3">
+                  Code expires <RelativeTime value={info.expiresAt} />
+               </span>
+            </span>
+         </div>
          <div className="button-row">
-            <button type="button" disabled={pending} onClick={() => void decide("approve")}>
+            <button
+               type="button"
+               className="button button-primary button-large"
+               disabled={pending}
+               onClick={() => void decide("approve")}
+            >
                Approve
             </button>
             <button
                type="button"
-               className="secondary"
+               className="button button-secondary button-large"
                disabled={pending}
                onClick={() => void decide("deny")}
             >

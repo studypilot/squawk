@@ -1,8 +1,10 @@
 import { LIMITS } from "@squawk/shared"
-import type { Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
+import type { Author, Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
 import type { DeviceLoginState } from "../auth"
 import type { ListFilter, OverlayState } from "../state"
-import { h, icon } from "./dom"
+import { copyText } from "./clipboard"
+import { autoGrow, avatar, h, icon, planeMark } from "./dom"
+import type { IconName } from "./dom"
 import { authorName, firstLine, relativeTime, renderBody } from "./format"
 
 export interface PanelHandlers {
@@ -22,6 +24,12 @@ export interface PanelHandlers {
 export interface Panel {
    element: HTMLElement
    render(state: OverlayState): void
+   /** Shows skeleton rows until the first list of the site has arrived. */
+   setLoaded(loaded: boolean): void
+   /** Squawks of this page whose pin could not be placed; shown in the tray. */
+   setOrphans(squawks: Squawk[]): void
+   /** Marks the list row whose page pin is under the pointer. */
+   setHoveredPin(squawkId: string | null): void
 }
 
 const RENDER_KEYS = [
@@ -36,21 +44,41 @@ const RENDER_KEYS = [
    "pageKey"
 ] as const satisfies readonly (keyof OverlayState)[]
 
+const SKELETON_ROWS = 4
+const COPIED_FEEDBACK_MS = 1200
+
 /** Slide-over on the right: sign-in, the squawk list, or one thread. */
 export function createPanel(handlers: PanelHandlers): Panel {
-   const siteLabel = h("div", { class: "site" })
+   const siteLabel = h("code", { class: "site chip mono" })
    const pageLabel = h("div", { class: "page" })
-   const newButton = iconButton("plus", "New squawk (C)", () => handlers.startPinMode())
+   const newButton = h(
+      "button",
+      {
+         class: "button primary small",
+         type: "button",
+         title: "New squawk (C)",
+         "aria-label": "New squawk (C)",
+         onclick: () => handlers.startPinMode()
+      },
+      [icon("plus", 14), "New"]
+   )
    const header = h("div", { class: "panel-header" }, [
-      h("div", { class: "panel-title" }, [siteLabel, pageLabel]),
-      newButton,
-      iconButton("close", "Close", () => handlers.close())
+      h("div", { class: "panel-brand" }, [
+         planeMark(18),
+         h("span", { class: "wordmark" }, ["Squawk"]),
+         newButton,
+         iconButton("close", "Close", () => handlers.close())
+      ]),
+      h("div", { class: "panel-keys" }, [siteLabel, pageLabel])
    ])
+   const tray = h("div", { class: "orphan-tray", hidden: true })
    const body = h("div", { class: "panel-body" })
-   const element = h("aside", { class: "panel", "aria-label": "Squawks" }, [header, body])
+   const element = h("aside", { class: "panel", "aria-label": "Squawks" }, [header, tray, body])
    let previous: OverlayState | null = null
    let bodyKey = ""
    let threadView: ThreadView | null = null
+   let loaded = false
+   let hoveredPinId: string | null = null
 
    function showBody(key: string, content: Node): void {
       const scrollTop = key === bodyKey ? body.scrollTop : 0
@@ -64,44 +92,83 @@ export function createPanel(handlers: PanelHandlers): Panel {
       threadView = null
    }
 
+   function applyHoveredPin(): void {
+      for (const row of body.querySelectorAll<HTMLElement>(".item")) {
+         row.classList.toggle("is-active", row.dataset.id === hoveredPinId)
+      }
+   }
+
+   function render(state: OverlayState): void {
+      element.classList.toggle("is-open", state.panel !== "closed")
+      if (state.panel === "closed") {
+         disposeThreadView()
+         bodyKey = ""
+         return
+      }
+      siteLabel.textContent = state.siteKey
+      siteLabel.title = state.siteKey
+      pageLabel.textContent = state.pageKey
+      pageLabel.title = state.pageKey
+      newButton.hidden = !state.token
+      tray.hidden = !state.token || state.panel !== "list" || tray.childElementCount === 0
+      if (!state.token) {
+         disposeThreadView()
+         return showBody("sign-in", signInView(state.login, handlers))
+      }
+      if (state.panel === "thread" && state.threadId) {
+         if (threadView?.squawkId !== state.threadId) {
+            disposeThreadView()
+            threadView = createThreadView(state.threadId, handlers)
+         }
+         threadView.update(state)
+         return showBody(`thread:${state.threadId}`, threadView.element)
+      }
+      disposeThreadView()
+      showBody("list", listView(state, loaded, handlers))
+      applyHoveredPin()
+   }
+
    return {
       element,
       render(state) {
          const changed = !previous || RENDER_KEYS.some(key => previous?.[key] !== state[key])
          previous = state
-         if (!changed) return
-         element.classList.toggle("is-open", state.panel !== "closed")
-         if (state.panel === "closed") {
-            disposeThreadView()
-            bodyKey = ""
-            return
+         if (changed) render(state)
+      },
+      setLoaded(next) {
+         if (loaded === next) return
+         loaded = next
+         if (previous && bodyKey === "list") render(previous)
+      },
+      setOrphans(squawks) {
+         tray.replaceChildren()
+         if (squawks.length > 0) {
+            tray.append(
+               h("span", { class: "label" }, [`${squawks.length} not on this view`]),
+               ...squawks.map(squawk =>
+                  h(
+                     "button",
+                     {
+                        class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}`,
+                        type: "button",
+                        title: `#${squawk.number}: ${firstLine(squawk.body)}`,
+                        onclick: () => handlers.openThread(squawk.id)
+                     },
+                     [h("span", {}, [String(squawk.number)])]
+                  )
+               )
+            )
          }
-         siteLabel.textContent = state.siteKey
-         pageLabel.textContent = state.pageKey
-         newButton.hidden = !state.token
-         if (!state.token) {
-            disposeThreadView()
-            return showBody("sign-in", signInView(state.login, handlers))
-         }
-         if (state.panel === "thread" && state.threadId) {
-            if (threadView?.squawkId !== state.threadId) {
-               disposeThreadView()
-               threadView = createThreadView(state.threadId, handlers)
-            }
-            threadView.update(state)
-            return showBody(`thread:${state.threadId}`, threadView.element)
-         }
-         disposeThreadView()
-         showBody("list", listView(state, handlers))
+         tray.hidden = squawks.length === 0 || !previous?.token || previous.panel !== "list"
+      },
+      setHoveredPin(squawkId) {
+         hoveredPinId = squawkId
+         applyHoveredPin()
       }
    }
 }
 
-function iconButton(
-   name: Parameters<typeof icon>[0],
-   label: string,
-   onclick: () => void
-): HTMLButtonElement {
+function iconButton(name: IconName, label: string, onclick: () => void): HTMLButtonElement {
    return h(
       "button",
       { class: "icon-button", type: "button", title: label, "aria-label": label, onclick },
@@ -109,25 +176,33 @@ function iconButton(
    )
 }
 
+// ---- sign-in -------------------------------------------------------------------------------
+
 function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HTMLElement {
    const signInButton = h(
       "button",
       { class: "button primary", type: "button", onclick: () => handlers.signIn() },
       [login ? "Try again" : "Sign in"]
    )
-   const view = h("div", { class: "sign-in" })
+   const view = h("div", { class: "sign-in" }, [
+      planeMark(28),
+      h("div", { class: "title" }, ["Sign in to Squawk"])
+   ])
    if (!login) {
-      view.append(h("p", {}, ["Sign in to see and add squawks on this page."]), signInButton)
+      view.append(
+         h("p", { class: "muted" }, ["See and add squawks on this page with your team account."]),
+         signInButton
+      )
       return view
    }
    switch (login.status) {
       case "starting":
-         view.append(h("p", { class: "muted" }, ["Requesting a sign-in code…"]))
+         view.append(h("p", { class: "waiting" }, ["Requesting a sign-in code…"]))
          break
       case "waiting":
          view.append(
-            h("p", {}, ["Confirm this code on the approval page:"]),
-            h("div", { class: "user-code" }, [login.userCode]),
+            h("p", { class: "muted" }, ["Confirm this code on the approval page"]),
+            userCode(login.userCode),
             h(
                "a",
                {
@@ -136,24 +211,24 @@ function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HT
                   target: "_blank",
                   rel: "noopener"
                },
-               ["Open approval page"]
+               ["Open approval page", icon("external", 14)]
             ),
-            h("p", { class: "muted" }, ["Waiting for approval…"]),
+            h("p", { class: "waiting" }, ["Waiting for approval…"]),
             h(
                "button",
-               { class: "button", type: "button", onclick: () => handlers.cancelSignIn() },
+               { class: "button ghost", type: "button", onclick: () => handlers.cancelSignIn() },
                ["Cancel"]
             )
          )
          break
       case "approved":
-         view.append(h("p", {}, ["Signed in."]))
+         view.append(h("p", { class: "muted" }, ["Signed in."]))
          break
       case "denied":
-         view.append(h("p", {}, ["The sign-in was denied."]), signInButton)
+         view.append(h("p", { class: "muted" }, ["The sign-in was denied."]), signInButton)
          break
       case "expired":
-         view.append(h("p", {}, ["The code expired."]), signInButton)
+         view.append(h("p", { class: "muted" }, ["The code expired."]), signInButton)
          break
       case "error":
          view.append(h("p", { class: "error" }, [login.message]), signInButton)
@@ -162,7 +237,32 @@ function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HT
    return view
 }
 
-function listView(state: OverlayState, handlers: PanelHandlers): HTMLElement {
+function userCode(code: string): HTMLElement {
+   let timer: ReturnType<typeof setTimeout> | undefined
+   const tile = h(
+      "button",
+      {
+         class: "user-code",
+         type: "button",
+         title: "Copy code",
+         "aria-label": `Code ${code}, copy`
+      },
+      [code]
+   )
+   tile.addEventListener("click", () => {
+      void copyText(code, tile.getRootNode() as ParentNode).then(copied => {
+         if (!copied) return
+         tile.classList.add("is-copied")
+         clearTimeout(timer)
+         timer = setTimeout(() => tile.classList.remove("is-copied"), COPIED_FEEDBACK_MS)
+      })
+   })
+   return tile
+}
+
+// ---- list ----------------------------------------------------------------------------------
+
+function listView(state: OverlayState, loaded: boolean, handlers: PanelHandlers): HTMLElement {
    const counts = { open: 0, resolved: 0 }
    for (const squawk of state.squawks) counts[squawk.status]++
    const tab = (filter: ListFilter, label: string): HTMLButtonElement =>
@@ -174,7 +274,7 @@ function listView(state: OverlayState, handlers: PanelHandlers): HTMLElement {
             "aria-pressed": String(state.filter === filter),
             onclick: () => handlers.setFilter(filter)
          },
-         [`${label} ${counts[filter]}`]
+         [label, h("span", { class: "count" }, [String(counts[filter])])]
       )
 
    const visible = state.squawks
@@ -190,45 +290,94 @@ function listView(state: OverlayState, handlers: PanelHandlers): HTMLElement {
    const sections: HTMLElement[] = []
    for (const [page, squawks] of groups) {
       if (squawks.length === 0) continue
-      const title = page === state.pageKey ? "This page" : page
+      const current = page === state.pageKey
       sections.push(
          h("section", {}, [
-            h("h3", { class: "group-title", title: page }, [title]),
-            ...squawks.map(squawk => listItem(squawk, handlers))
+            h("h3", { class: "group-title", title: page }, [current ? "This page" : page]),
+            ...squawks.map(squawk => listItem(squawk, current, handlers))
          ])
       )
    }
-   const empty =
-      sections.length === 0 &&
-      h("p", { class: "empty" }, [
-         state.filter === "open" ? "No open squawks on this site." : "Nothing resolved yet."
-      ])
-   return h("div", {}, [
-      h("div", { class: "tabs" }, [tab("open", "Open"), tab("resolved", "Resolved")]),
-      empty,
-      ...sections
+   const content =
+      sections.length > 0
+         ? sections
+         : !loaded && state.squawks.length === 0
+           ? skeletonRows()
+           : [emptyState(state.filter)]
+   return h("div", { class: "list" }, [
+      h("div", { class: "tabs", role: "group", "aria-label": "Filter" }, [
+         tab("open", "Open"),
+         tab("resolved", "Resolved")
+      ]),
+      ...content
    ])
 }
 
-function listItem(squawk: Squawk, handlers: PanelHandlers): HTMLElement {
+function listItem(squawk: Squawk, onThisPage: boolean, handlers: PanelHandlers): HTMLElement {
+   const replies = squawk.commentCount
    return h(
       "button",
-      { class: "item", type: "button", onclick: () => handlers.openThread(squawk.id) },
+      {
+         class: `item${squawk.status === "resolved" ? " is-resolved" : ""}`,
+         type: "button",
+         "data-id": squawk.id,
+         onclick: () => handlers.openThread(squawk.id)
+      },
       [
-         h("div", { class: "item-top" }, [
-            h("span", { class: "number" }, [`#${squawk.number}`]),
-            h("span", { class: "item-body" }, [firstLine(squawk.body)])
-         ]),
-         h("div", { class: "item-meta" }, [
-            h("span", {}, [authorName(squawk.author)]),
-            h("span", {}, [relativeTime(squawk.createdAt)]),
-            h("span", {}, [
-               `${squawk.commentCount} ${squawk.commentCount === 1 ? "reply" : "replies"}`
+         avatar(squawk.author, 24),
+         h("div", { class: "item-text" }, [
+            h("div", { class: "item-body" }, [firstLine(squawk.body)]),
+            h("div", { class: "item-meta" }, [
+               h("span", { class: "number" }, [`#${squawk.number}`]),
+               h("span", {}, ["·"]),
+               h("span", {}, [authorName(squawk.author)]),
+               h("span", {}, ["·"]),
+               h("span", {}, [relativeTime(squawk.createdAt)]),
+               !onThisPage && h("span", {}, ["·"]),
+               !onThisPage && h("span", { class: "page-key", title: squawk.page }, [squawk.page]),
+               replies > 0 && h("span", {}, ["·"]),
+               replies > 0 &&
+                  h("span", { class: "replies" }, [
+                     icon("comment", 12),
+                     String(replies),
+                     h("span", { class: "sr-only" }, [replies === 1 ? " reply" : " replies"])
+                  ])
             ])
          ])
       ]
    )
 }
+
+function emptyState(filter: ListFilter): HTMLElement {
+   const open = filter === "open"
+   return h("div", { class: "empty" }, [
+      icon(open ? "comment" : "check", 24),
+      h("div", { class: "title" }, [open ? "No open squawks here yet" : "Nothing resolved yet"]),
+      h(
+         "div",
+         { class: "hint" },
+         open
+            ? ["Press ", h("kbd", {}, ["C"]), " or tap + to file the first one"]
+            : ["Resolved squawks of this site show up here"]
+      )
+   ])
+}
+
+function skeletonRows(): HTMLElement[] {
+   return Array.from({ length: SKELETON_ROWS }, (_, index) => {
+      const title = h("div", { class: "skeleton-bar" })
+      title.style.width = `${72 - (index % 3) * 14}%`
+      const meta = h("div", { class: "skeleton-bar" })
+      meta.style.width = "45%"
+      meta.style.height = "8px"
+      return h("div", { class: "skeleton", "aria-hidden": "true" }, [
+         h("span", { class: "avatar" }),
+         h("div", { class: "skeleton-text" }, [title, meta])
+      ])
+   })
+}
+
+// ---- thread --------------------------------------------------------------------------------
 
 interface ThreadView {
    squawkId: string
@@ -239,33 +388,47 @@ interface ThreadView {
 
 function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView {
    const title = h("span", { class: "thread-title" })
-   const status = h("span", { class: "status" })
-   const shot = h("div", { class: "shot" })
-   const messages = h("div", { class: "messages" }, [h("p", { class: "muted" }, ["Loading…"])])
+   const status = h("span", { class: "chip status" })
+   const banner = h("div", { class: "thread-banner", hidden: true })
+   const shot = h("div", { class: "shot", hidden: true })
+   const messages = h("div", { class: "messages" }, threadSkeleton())
    const textarea = h("textarea", {
       placeholder: "Reply…",
-      maxlength: LIMITS.bodyMaxLength,
-      rows: 3
+      "aria-label": "Reply",
+      maxlength: LIMITS.bodyMaxLength
    })
+   autoGrow(textarea, 2, 6)
    const replyButton = h("button", { class: "button primary", type: "button" }, ["Reply"])
    const statusButton = h("button", { class: "button", type: "button" })
-   const copyButton = h("button", { class: "button", type: "button" }, ["Copy link"])
-   const pageLink = h("a", { class: "button", hidden: true }, ["Go to page"])
+   const copyButton = iconButton("link", "Copy link", () => {
+      if (detail) handlers.copyLink(detail)
+   })
+   const pageLink = h("a", { class: "button ghost", hidden: true }, [
+      "Go to page",
+      icon("external", 14)
+   ])
    const error = h("div", { class: "error", hidden: true })
    const element = h("div", { class: "thread" }, [
       h("div", { class: "thread-header" }, [
          iconButton("back", "Back to list", () => handlers.showList()),
          title,
-         status
+         status,
+         h("span", { class: "spacer" }),
+         copyButton
       ]),
+      banner,
       shot,
       messages,
-      h("div", { class: "reply" }, [
+      h("div", { class: "thread-footer" }, [
          textarea,
          error,
-         h("div", { class: "actions" }, [replyButton])
-      ]),
-      h("div", { class: "thread-actions" }, [statusButton, copyButton, pageLink])
+         h("div", { class: "thread-actions" }, [
+            statusButton,
+            pageLink,
+            h("span", { class: "spacer" }),
+            replyButton
+         ])
+      ])
    ])
    let detail: SquawkDetail | null = null
    let screenshotUrl: string | null = null
@@ -291,6 +454,7 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
       void run(replyButton, async () => {
          await handlers.reply(squawkId, body)
          textarea.value = ""
+         textarea.dispatchEvent(new Event("input"))
       })
    })
    textarea.addEventListener("keydown", event => {
@@ -301,23 +465,49 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
       const next: SquawkStatus = detail.status === "open" ? "resolved" : "open"
       void run(statusButton, () => handlers.setStatus(squawkId, next))
    })
-   copyButton.addEventListener("click", () => {
-      if (detail) handlers.copyLink(detail)
-   })
 
-   function loadScreenshot(path: string): void {
-      handlers.loadScreenshot(path).then(
+   function openLightbox(): void {
+      if (!screenshotUrl) return
+      const lightbox = h("div", { class: "lightbox", role: "dialog", "aria-label": "Screenshot" })
+      const close = (): void => {
+         lightbox.remove()
+         window.removeEventListener("keydown", onKey, true)
+      }
+      const onKey = (event: KeyboardEvent): void => {
+         if (event.key !== "Escape") return
+         event.stopPropagation()
+         close()
+      }
+      lightbox.append(
+         h("img", { src: screenshotUrl, alt: "Screenshot" }),
+         iconButton("close", "Close", close)
+      )
+      lightbox.addEventListener("click", close)
+      window.addEventListener("keydown", onKey, true)
+      const root = element.getRootNode()
+      ;(root instanceof ShadowRoot ? root : document.body).append(lightbox)
+   }
+
+   function loadScreenshot(next: SquawkDetail): void {
+      if (!next.screenshot) return
+      handlers.loadScreenshot(next.screenshot.url).then(
          blob => {
             if (disposed) return
             screenshotUrl = URL.createObjectURL(blob)
-            shot.replaceChildren(h("img", { src: screenshotUrl, alt: "Screenshot" }))
+            const image = h("img", { src: screenshotUrl, alt: "Screenshot" })
+            shot.replaceChildren(image, h("span", { class: "expand" }, [icon("expand", 14)]))
+            const marker = screenshotMarker(next)
+            if (marker) shot.append(marker)
+            shot.hidden = false
          },
          () => {
-            if (!disposed)
-               shot.replaceChildren(h("p", { class: "muted" }, ["Screenshot unavailable."]))
+            if (disposed) return
+            shot.replaceChildren(h("span", { class: "muted" }, ["Screenshot unavailable."]))
+            shot.hidden = false
          }
       )
    }
+   shot.addEventListener("click", openLightbox)
 
    return {
       squawkId,
@@ -325,12 +515,27 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
       update(state) {
          const next = state.thread?.id === squawkId ? state.thread : null
          if (!next || next === detail) return
-         if (!detail && next.screenshot) loadScreenshot(next.screenshot.url)
+         if (!detail) loadScreenshot(next)
          detail = next
          title.textContent = `#${next.number}`
          status.textContent = next.status === "open" ? "Open" : "Resolved"
-         status.className = `status is-${next.status}`
-         statusButton.textContent = next.status === "open" ? "Resolve" : "Reopen"
+         status.className = `chip status is-${next.status}`
+         statusButton.replaceChildren(
+            icon(next.status === "open" ? "check" : "reopen", 14),
+            next.status === "open" ? "Resolve" : "Reopen"
+         )
+         banner.hidden = next.status !== "resolved"
+         if (next.status === "resolved") {
+            banner.replaceChildren(
+               icon("check", 14),
+               h("span", {}, [
+                  `Resolved by ${next.resolvedBy ? authorName(next.resolvedBy) : "someone"}`
+               ]),
+               next.resolvedAt
+                  ? h("span", { class: "muted" }, [`· ${relativeTime(next.resolvedAt)}`])
+                  : ""
+            )
+         }
          const pageUrl = next.page !== state.pageKey ? safeHttpUrl(next.meta.url) : null
          pageLink.hidden = pageUrl === null
          if (pageUrl === null) pageLink.removeAttribute("href")
@@ -342,6 +547,32 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
          if (screenshotUrl) URL.revokeObjectURL(screenshotUrl)
       }
    }
+}
+
+/** Marker on the stored screenshot at the pinned point; the image keeps its own aspect ratio. */
+function screenshotMarker(detail: SquawkDetail): HTMLElement | null {
+   const anchor = detail.anchor
+   if (!anchor) return null
+   const clickX = anchor.elementBox.x + anchor.rect.x * anchor.elementBox.width
+   const clickY = anchor.elementBox.y + anchor.rect.y * anchor.elementBox.height
+   const marker = h("span", { class: "marker" })
+   marker.style.left = `${(clickX / anchor.viewport.width) * 100}%`
+   marker.style.top = `${(clickY / anchor.viewport.height) * 100}%`
+   return marker
+}
+
+function threadSkeleton(): HTMLElement[] {
+   return Array.from({ length: 2 }, (_, index) => {
+      const head = h("div", { class: "skeleton-bar" })
+      head.style.width = "40%"
+      head.style.height = "8px"
+      const line = h("div", { class: "skeleton-bar" })
+      line.style.width = index === 0 ? "90%" : "60%"
+      return h("div", { class: "skeleton", "aria-hidden": "true" }, [
+         h("span", { class: "avatar" }),
+         h("div", { class: "skeleton-text" }, [head, line])
+      ])
+   })
 }
 
 /** Only http(s) URLs may become links; `meta.url` is reporter-supplied and could be anything. */
@@ -363,9 +594,17 @@ function threadMessages(detail: SquawkDetail): HTMLElement[] {
    ]
 }
 
-function message(author: SquawkDetail["author"], createdAt: string, body: string): HTMLElement {
+function message(author: Author, createdAt: string, body: string): HTMLElement {
+   const name = author.kind === "agent" ? author.name : author.name || author.email
    return h("div", { class: "message" }, [
-      h("div", { class: "message-meta" }, [`${authorName(author)} · ${relativeTime(createdAt)}`]),
-      h("div", { class: "message-body" }, [renderBody(body)])
+      avatar(author, 24),
+      h("div", { class: "message-text" }, [
+         h("div", { class: "message-head" }, [
+            h("span", { class: "name" }, [name]),
+            author.kind === "agent" && h("span", { class: "chip is-agent" }, ["agent"]),
+            h("span", { class: "muted" }, [relativeTime(createdAt)])
+         ]),
+         h("div", { class: "message-body" }, [renderBody(body)])
+      ])
    ])
 }
