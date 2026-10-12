@@ -11,9 +11,7 @@ on:
       tags: ["v*"]
    workflow_dispatch:
 
-permissions:
-   contents: write
-   packages: write
+permissions: {}
 
 concurrency:
    group: release-${{ github.ref }}
@@ -23,6 +21,9 @@ jobs:
    image:
       name: Server image
       runs-on: ubuntu-24.04-arm
+      permissions:
+         contents: read
+         packages: write
       outputs:
          tag: ${{ steps.tag.outputs.tag }}
       steps:
@@ -43,8 +44,6 @@ jobs:
               file: deploy/Dockerfile
               platforms: linux/amd64,linux/arm64
               push: true
-              build-args: |
-                 SQUAWK_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
               tags: |
                  ghcr.io/studypilot/squawk:${{ steps.tag.outputs.tag }}
                  ghcr.io/studypilot/squawk:${{ github.sha }}
@@ -56,6 +55,9 @@ jobs:
       name: Extension zip and CLI package
       if: github.ref_type == 'tag'
       runs-on: ubuntu-24.04-arm
+      permissions:
+         contents: write
+         packages: write
       steps:
          - uses: actions/checkout@v6
          - uses: pnpm/action-setup@v5
