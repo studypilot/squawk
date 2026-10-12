@@ -347,6 +347,11 @@ kbd {
    color: var(--sq-warning-text);
 }
 
+.avatar-delegate {
+   background: var(--sq-primary-soft);
+   color: var(--sq-primary);
+}
+
 .author {
    align-items: center;
    display: inline-flex;
@@ -916,11 +921,4 @@ kbd {
    border: 0;
    border-top: 1px solid var(--sq-border);
    height: 0;
-}
-
-.markdown-hint {
-   color: var(--sq-text-3);
-   font-size: 12px;
-   margin-top: -6px;
-   padding: 0 4px;
 }

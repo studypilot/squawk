@@ -120,6 +120,16 @@ export function TerminalIcon(props: IconProps) {
    )
 }
 
+/** Four-pointed sparkle with a small companion, for agents writing on someone's behalf. */
+export function SparkleIcon(props: IconProps) {
+   return (
+      <Icon {...props}>
+         <path d="M11 3l1.8 5.2L18 10l-5.2 1.8L11 17l-1.8-5.2L4 10l5.2-1.8z" />
+         <path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
+      </Icon>
+   )
+}
+
 export function ImageIcon(props: IconProps) {
    return (
       <Icon {...props}>

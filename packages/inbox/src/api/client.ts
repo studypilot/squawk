@@ -19,13 +19,14 @@ import type {
    MeResponse,
    Site,
    SquawkDetail,
-   SquawkStatus,
+   SquawkTargetStatus,
    Token
 } from "@squawk/shared"
 
 export type DeviceInfo = ReturnType<typeof deviceInfoResponseSchema.parse>
 export type CreateTokenInput = ReturnType<typeof createTokenInputSchema.parse>
-export type SquawkStatusFilter = SquawkStatus | "all"
+/** The inbox never lists drafts; they live in the overlay of their author. */
+export type SquawkStatusFilter = SquawkTargetStatus | "all"
 
 interface Schema<T> {
    parse(input: unknown): T
@@ -165,7 +166,10 @@ export async function addComment(squawkId: string, body: string): Promise<void> 
    await send("POST", `/api/squawks/${encodeURIComponent(squawkId)}/comments`, { body })
 }
 
-export async function updateSquawkStatus(squawkId: string, status: SquawkStatus): Promise<void> {
+export async function updateSquawkStatus(
+   squawkId: string,
+   status: SquawkTargetStatus
+): Promise<void> {
    await send("PATCH", `/api/squawks/${encodeURIComponent(squawkId)}`, { status })
 }
 

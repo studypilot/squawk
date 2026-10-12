@@ -261,7 +261,6 @@ function Composer({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: () =
             onChange={event => setBody(event.target.value)}
             onKeyDown={handleKeyDown}
          />
-         <p className="markdown-hint">Markdown supported</p>
          <div className="composer-actions">
             <button
                type="button"

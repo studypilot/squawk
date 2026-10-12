@@ -1,7 +1,7 @@
 import type { SquawkStatus } from "@squawk/shared"
 import { CheckIcon } from "./icons"
 
-const LABELS: Record<SquawkStatus, string> = { open: "Open", resolved: "Resolved" }
+const LABELS: Record<SquawkStatus, string> = { draft: "Draft", open: "Open", resolved: "Resolved" }
 
 export function StatusChip({ status }: { status: SquawkStatus }) {
    return (
