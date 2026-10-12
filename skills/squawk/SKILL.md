@@ -24,6 +24,9 @@ thread is a _squawk_, numbered per site (`feat/login#3`). The `squawk` CLI reads
 2. **List.** `squawk list --site <key> --json` (add `--all` if `nextCursor` is not null). Work
    through the open squawks one at a time, oldest first.
 3. **Read each squawk.**
+   - First mark it as yours: `squawk work '<key>#<n>'`. Reviewers then see in the overlay and the
+     inbox that an agent is on it. Your reply or resolve in steps 6 to 8 clears the mark; if you
+     stop without answering, clear it with `squawk work '<key>#<n>' --done`.
    - `squawk show '<key>#<n>' --json` for page, `meta.url`, `meta.ref` (commit the reviewer saw),
      viewport, anchor and the full thread.
    - `squawk screenshot '<key>#<n>' --out /tmp/squawk-<n>.png`, then open the PNG with the Read
@@ -58,6 +61,13 @@ When the user wants you to stay on a preview and handle squawks as they come in,
    round: look at every screenshot (Read `screenshotPath`), find the code, fix, verify, commit,
    then `reply` or `resolve` each one (steps 4 to 8 of the workflow above). Only then start
    `watch` again.
+
+   `watch` marks every squawk it returns as being worked on by you (its `working` field shows
+   it); reviewers see that in the overlay and the inbox. Your `reply` or `resolve` on a squawk
+   clears the mark automatically. A returned squawk you do **not** handle in this round (out of
+   scope, belongs to someone else, needs the user first) you release right away with
+   `squawk work '<key>#<n>' --done`, so nobody waits on you for it.
+
 4. **Exit 2** means not logged in: stop and ask the user, as everywhere else.
 
 Rules for the loop:
@@ -67,6 +77,9 @@ Rules for the loop:
 - Several squawks about the same spot: fix them together in one change, then answer each one
   individually.
 - Never run `watch` in a tight loop without handling its result; exit 0 always means work to do.
+- Never leave a squawk marked as being worked on when you stop. Before you end the session or
+  stop the loop, run `squawk work 'KEY#N' --done` for every squawk you claimed and did not reply
+  to or resolve.
 - Your replies through a CLI login show up in the inbox and overlay as "Agent for <Name>", not as
   the user, so reviewers can tell your answers from the user's own. Agent tokens
   (`SQUAWK_TOKEN`) show the token name instead.
@@ -94,7 +107,9 @@ squawk screenshot 'KEY#N' --out /tmp/squawk-N.png  # then Read the PNG
 squawk reply 'KEY#N' "Fixed: ... (abc1234)"        # reply; or --file PATH, or - for stdin
 squawk resolve 'KEY#N' --comment "Fixed: ... (abc1234)"  # reply and resolve in one go
 squawk reopen 'KEY#N'                              # undo a resolve
-squawk watch --site KEY --json --out /tmp/squawk   # wait for squawks; 0 = items, 3 = timeout
+squawk work 'KEY#N' ['KEY#M' ...]                  # mark as being worked on (reviewers see it)
+squawk work 'KEY#N' --done                         # release without replying
+squawk watch --site KEY --json --out /tmp/squawk   # wait for squawks and claim them; 0 = items, 3 = timeout
 ```
 
 `#N` with `--site KEY` works everywhere a reference is expected: `squawk show '#3' --site KEY`.

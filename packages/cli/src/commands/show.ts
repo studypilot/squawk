@@ -1,6 +1,6 @@
 import type { Anchor, SquawkDetail } from "@squawk/shared"
 import { type CommandContext, connect, printJson, printLine } from "../context"
-import { authorLabel, displayRef, relativeTime } from "../format"
+import { authorLabel, displayRef, elapsed, relativeTime } from "../format"
 import { resolveRef } from "../refs"
 
 export async function showCommand(
@@ -29,6 +29,11 @@ export function renderDetail(detail: SquawkDetail, now: Date, screenshotPath?: s
    field("Viewport", formatViewport(detail))
    field("Anchor", detail.anchor === null ? undefined : formatAnchor(detail.anchor))
    field("Author", `${authorLabel(detail.author)}, ${relativeTime(detail.createdAt, now)}`)
+   if (detail.working !== null) {
+      const { by, since } = detail.working
+      field("Working", `${authorLabel(by)}, since ${elapsed(since, now)}`)
+   }
+   if (detail.unread) field("Unread", "yes")
    if (detail.resolvedAt !== null) {
       const resolver = detail.resolvedBy === null ? "" : ` by ${authorLabel(detail.resolvedBy)}`
       field("Resolved", `${relativeTime(detail.resolvedAt, now)}${resolver}`)

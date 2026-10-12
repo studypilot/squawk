@@ -10,6 +10,7 @@ import { sitesCommand } from "./commands/sites"
 import { reopenCommand, resolveCommand } from "./commands/status"
 import { tokenCreateCommand, tokenListCommand, tokenRevokeCommand } from "./commands/tokens"
 import { watchCommand } from "./commands/watch"
+import { workCommand } from "./commands/work"
 import { whoamiCommand } from "./commands/whoami"
 import type { CliContext, CommandContext } from "./context"
 import { CliError } from "./errors"
@@ -139,16 +140,28 @@ export function createProgram(context: CliContext): Command {
       .action(withContext(reopenCommand))
 
    program
+      .command("work")
+      .description(
+         "mark squawks as being worked on, shown to reviewers in the overlay and inbox; " +
+            "--done clears it (a reply, resolve or reopen clears it as well)"
+      )
+      .argument("<refs...>", REF_HELP)
+      .addOption(siteOption)
+      .option("--done", "clear the mark instead of setting it")
+      .action(withContext(workCommand))
+
+   program
       .command("watch")
       .description(
          "wait until open squawks need attention (new, or a human answered), then print all of " +
-            "them with screenshots saved and exit 0; exit 3 on timeout. For agents: run in the " +
-            "background and start again after handling the result"
+            "them with screenshots saved, mark them as being worked on, and exit 0; exit 3 on " +
+            "timeout. For agents: run in the background and start again after handling the result"
       )
       .option("--site <key>", "site key (default: the current git branch, see site-key)")
       .option("--timeout <seconds>", "give up after this long, 0 = never", parseTimeout, 540)
       .option("--interval <seconds>", "seconds between polls", parseInterval, 10)
       .option("--out <dir>", "directory for the screenshots", "/tmp/squawk")
+      .option("--no-claim", "do not mark the returned squawks as being worked on")
       .action(withContext(watchCommand))
 
    const token = program.command("token").description("manage agent tokens (humans only)")

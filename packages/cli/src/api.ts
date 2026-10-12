@@ -40,6 +40,8 @@ export interface ListSquawksParameters {
    site: string
    status: "open" | "resolved" | "all"
    page?: string
+   /** Only squawks unread for the caller. */
+   unread?: boolean
    cursor?: string
    limit?: number
 }
@@ -72,6 +74,7 @@ export class ApiClient {
    listSquawks(parameters: ListSquawksParameters): Promise<ListSquawksResponse> {
       const query = new URLSearchParams({ site: parameters.site, status: parameters.status })
       if (parameters.page !== undefined) query.set("page", parameters.page)
+      if (parameters.unread === true) query.set("unread", "true")
       if (parameters.cursor !== undefined) query.set("cursor", parameters.cursor)
       if (parameters.limit !== undefined) query.set("limit", String(parameters.limit))
       return this.requestJson("GET", `/api/squawks?${query}`, listSquawksResponseSchema)
@@ -88,6 +91,16 @@ export class ApiClient {
 
    setStatus(ref: string, status: SquawkTargetStatus): Promise<unknown> {
       return this.requestUnchecked("PATCH", `/api/squawks/${ref}`, { body: { status } })
+   }
+
+   /** Marks the squawk as being worked on by the caller (agents and CLI logins only). */
+   async claim(ref: string): Promise<void> {
+      await this.requestUnchecked("PUT", `/api/squawks/${ref}/working`, {})
+   }
+
+   /** Clears the "working on it" mark, whoever set it. */
+   async releaseClaim(ref: string): Promise<void> {
+      await this.requestUnchecked("DELETE", `/api/squawks/${ref}/working`, {})
    }
 
    /** Downloads a screenshot by the relative `screenshot.url` of a squawk. */

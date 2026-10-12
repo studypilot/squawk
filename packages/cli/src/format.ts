@@ -55,6 +55,16 @@ function firstName(name: string | null): string | undefined {
    return name?.trim().split(/\s+/)[0] || undefined
 }
 
+/** Time since `isoDate` without a suffix: `<1 min`, `12 min`, `3 h`, `2 d`. */
+export function elapsed(isoDate: string, now: Date): string {
+   const minutes = Math.floor((now.getTime() - new Date(isoDate).getTime()) / 60_000)
+   if (minutes < 1) return "<1 min"
+   if (minutes < 60) return `${minutes} min`
+   const hours = Math.floor(minutes / 60)
+   if (hours < 24) return `${hours} h`
+   return `${Math.floor(hours / 24)} d`
+}
+
 /** Lower-case file-name-safe version of a site key: `feat/Login` becomes `feat-login`. */
 export function siteSlug(siteKey: string): string {
    return siteKey

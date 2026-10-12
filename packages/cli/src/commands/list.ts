@@ -39,19 +39,26 @@ function printSquawkTable(
    if (result.items.length === 0) {
       return printLine(context, `No ${statusLabel}squawks on site ${options.site}.`)
    }
-   const rows = result.items.map((squawk: Squawk) => [
-      `#${squawk.number}`,
-      squawk.status,
-      truncate(squawk.page, 30),
-      truncate(firstLine(squawk.body), 50),
-      truncate(authorLabel(squawk.author), 24),
-      relativeTime(squawk.createdAt, context.now()),
-      String(squawk.commentCount)
-   ])
-   printLine(
-      context,
-      renderTable(["#", "STATUS", "PAGE", "BODY", "AUTHOR", "AGE", "REPLIES"], rows)
-   )
+   // Unread dots and the working column appear only when some squawk needs them.
+   const anyUnread = result.items.some(squawk => squawk.unread)
+   const anyWorking = result.items.some(squawk => squawk.working !== null)
+   const rows = result.items.map((squawk: Squawk) => {
+      const unreadMark = anyUnread ? (squawk.unread ? "• " : "  ") : ""
+      const row = [
+         `${unreadMark}#${squawk.number}`,
+         squawk.status,
+         truncate(squawk.page, 30),
+         truncate(firstLine(squawk.body), 50),
+         truncate(authorLabel(squawk.author), 24),
+         relativeTime(squawk.createdAt, context.now()),
+         String(squawk.commentCount)
+      ]
+      if (anyWorking) row.push(squawk.working ? `⟳ ${authorLabel(squawk.working.by)}` : "")
+      return row
+   })
+   const headers = [anyUnread ? "  #" : "#", "STATUS", "PAGE", "BODY", "AUTHOR", "AGE", "REPLIES"]
+   if (anyWorking) headers.push("WORKING")
+   printLine(context, renderTable(headers, rows))
    if (result.nextCursor !== null) {
       printLine(context, `\nMore squawks available. Use --all to fetch every page.`)
    }

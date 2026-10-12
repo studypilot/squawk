@@ -11,6 +11,7 @@ import {
    jan,
    janAgent,
    jsonResponse,
+   NOW,
    SERVER,
    squawkFixture
 } from "../test-harness"
@@ -46,13 +47,21 @@ function squawk(number: number, lastAuthor: Author, overrides: Partial<SquawkDet
 
 /**
  * Answers like the server: `/api/me`, the open list (one response per poll, the last one
- * repeats), details by id and screenshots.
+ * repeats), claims (`PUT …/working`, or `claimStatus` instead of 204), details by id with the
+ * claim applied, and screenshots.
  */
-function serve(harness: Harness, polls: (SquawkDetail[] | Error)[]): void {
+function serve(harness: Harness, polls: (SquawkDetail[] | Error)[], claimStatus = 204): void {
    let poll = 0
-   harness.fetchMock.mockImplementation(async input => {
+   const claimed = new Set<string>()
+   harness.fetchMock.mockImplementation(async (input, init) => {
       const url = new URL(String(input))
       if (url.pathname === "/api/me") return jsonResponse(me)
+      const claim = /^\/api\/squawks\/([^/]+)\/working$/.exec(url.pathname)
+      if (claim && init?.method === "PUT") {
+         if (claimStatus !== 204) return errorResponse(claimStatus, "forbidden", "Agents only")
+         claimed.add(claim[1]!)
+         return new Response(null, { status: 204 })
+      }
       if (url.pathname === "/api/squawks") {
          const response = polls[Math.min(poll, polls.length - 1)]!
          poll += 1
@@ -61,7 +70,10 @@ function serve(harness: Harness, polls: (SquawkDetail[] | Error)[]): void {
       }
       const all = polls.flatMap(response => (response instanceof Error ? [] : response))
       const detail = all.find(item => url.pathname === `/api/squawks/${item.id}`)
-      if (detail) return jsonResponse(detail)
+      if (detail) {
+         const working = claimed.has(detail.id) ? { by: janAgent, since: NOW.toISOString() } : null
+         return jsonResponse({ ...detail, working })
+      }
       if (url.pathname.startsWith("/api/screenshots/")) return new Response(png)
       return errorResponse(404, "not_found", `No route for ${url.pathname}`)
    })
@@ -116,6 +128,50 @@ describe("squawk watch", () => {
       expect(harness.stderr()).toContain("Watching feat/login")
    })
 
+   it("marks every returned squawk as being worked on before printing it", async () => {
+      serve(harness, [[squawk(5, reviewer), squawk(4, janAgent), squawk(3, jan)]])
+
+      const exitCode = await finish(harness.run("watch", "--site", "feat/login", "--json"))
+
+      expect(exitCode).toBe(0)
+      const claims = harness.fetchMock.mock.calls
+         .filter(([, init]) => init?.method === "PUT")
+         .map(([url]) => String(url))
+      expect(claims).toEqual([
+         `${SERVER}/api/squawks/${squawk(5, jan).id}/working`,
+         `${SERVER}/api/squawks/${squawk(3, jan).id}/working`
+      ])
+      const items: SquawkDetail[] = JSON.parse(harness.stdout()).items
+      expect(items.map(item => item.working)).toEqual([
+         { by: janAgent, since: NOW.toISOString() },
+         { by: janAgent, since: NOW.toISOString() }
+      ])
+   })
+
+   it("leaves squawks unclaimed with --no-claim", async () => {
+      serve(harness, [[squawk(3, reviewer)]])
+
+      const exitCode = await finish(
+         harness.run("watch", "--site", "feat/login", "--json", "--no-claim")
+      )
+
+      expect(exitCode).toBe(0)
+      expect(harness.fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false)
+      expect(JSON.parse(harness.stdout()).items[0].working).toBeNull()
+   })
+
+   it("still prints the squawks when the token may not claim them", async () => {
+      serve(harness, [[squawk(3, reviewer), squawk(4, reviewer)]], 403)
+
+      const exitCode = await finish(harness.run("watch", "--site", "feat/login", "--json"))
+
+      expect(exitCode).toBe(0)
+      expect(harness.stderr()).toContain("could not mark the squawks as being worked on")
+      const puts = harness.fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT")
+      expect(puts).toHaveLength(1)
+      expect(JSON.parse(harness.stdout()).items).toHaveLength(2)
+   })
+
    it("keeps polling quietly until a human writes", async () => {
       serve(harness, [[squawk(3, janAgent)], [squawk(3, janAgent)], [squawk(3, reviewer)]])
 
@@ -162,6 +218,7 @@ describe("squawk watch", () => {
       const output = harness.stdout()
       expect(output).toMatch(/^2 squawks on feat\/login need attention\.\n─+\n/)
       expect(output).toContain("feat/login#3  [open]")
+      expect(output).toContain("Working:   Agent for Jan, since <1 min")
       expect(output).toContain(`Saved to ${join(harness.directory, "shots", "feat-login-3.png")}`)
       expect(output).toContain("feat/login#4  [open]")
       expect(output).toContain("No screenshot.")

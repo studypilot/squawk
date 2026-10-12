@@ -15,6 +15,8 @@ export interface WatchOptions {
    /** Seconds between polls. */
    interval: number
    out: string
+   /** False with `--no-claim`. */
+   claim: boolean
 }
 
 export type WatchItem = SquawkDetail & { screenshotPath: string | null }
@@ -51,6 +53,7 @@ export async function watchCommand(context: CommandContext, options: WatchOption
             needsAttention(squawk, currentMe)
          )
          if (waiting.length > 0) {
+            if (options.claim) await claimAll(context, client, waiting)
             const items = await collectItems(client, waiting, resolve(context.cwd, options.out))
             const result = { site, checkedAt: new Date().toISOString(), me: currentMe, items }
             return printResult(context, result)
@@ -79,6 +82,22 @@ export function needsAttention(squawk: Squawk, me: MeResponse): boolean {
    const last = squawk.lastAuthor
    if (me.principal.kind === "agent") return !(last.kind === "agent" && last.id === me.principal.id)
    return !(last.kind === "user" && last.id === me.principal.id && last.agent !== null)
+}
+
+/**
+ * Marks every returned squawk as being worked on, before the details are loaded so the printed
+ * `working` field already shows the claim. Tokens that may not claim only get a hint.
+ */
+async function claimAll(context: CommandContext, client: ApiClient, squawks: Squawk[]) {
+   for (const squawk of squawks) {
+      try {
+         await client.claim(squawk.id)
+      } catch (error) {
+         if (!(error instanceof ApiError) || error.status !== 403) throw error
+         context.stderr(`squawk: could not mark the squawks as being worked on: ${error.message}\n`)
+         return
+      }
+   }
 }
 
 async function listOpenSquawks(client: ApiClient, site: string): Promise<Squawk[]> {

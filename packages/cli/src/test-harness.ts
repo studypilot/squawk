@@ -167,6 +167,8 @@ export function squawkFixture(overrides: Partial<SquawkDetail> = {}): SquawkDeta
       submittedAt: "2026-10-10T10:00:00.000Z",
       lastActivityAt: "2026-10-10T11:00:00.000Z",
       lastAuthor: jan,
+      unread: false,
+      working: null,
       resolvedAt: null,
       resolvedBy: null,
       comments: [

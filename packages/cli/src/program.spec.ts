@@ -129,6 +129,7 @@ describe("squawk CLI", () => {
                      displayName: null,
                      openCount: 2,
                      resolvedCount: 5,
+                     unreadCount: 1,
                      lastActivityAt: "2026-10-10T09:00:00.000Z",
                      createdAt: "2026-10-01T09:00:00.000Z"
                   }
@@ -210,6 +211,28 @@ describe("squawk CLI", () => {
          expect(await harness.run("list", "--site", "feat/login")).toBe(0)
          expect(harness.stdout()).toContain("Agent for Jan")
       })
+
+      it("marks unread squawks and shows who is working on them", async () => {
+         harness.fetchMock.mockResolvedValueOnce(
+            jsonResponse({
+               items: [
+                  squawkFixture({
+                     number: 4,
+                     unread: true,
+                     working: { by: janAgent, since: "2026-10-10T11:57:00.000Z" }
+                  }),
+                  squawkFixture({ number: 3 })
+               ],
+               nextCursor: null
+            })
+         )
+         expect(await harness.run("list", "--site", "feat/login")).toBe(0)
+         expect(harness.stdout()).toBe(
+            "  #   STATUS  PAGE       BODY                                  AUTHOR  AGE     REPLIES  WORKING\n" +
+               "• #4  open    /settings  The save button overlaps the footer.  Jan     2h ago  1        ⟳ Agent for Jan\n" +
+               "  #3  open    /settings  The save button overlaps the footer.  Jan     2h ago  1\n"
+         )
+      })
    })
 
    describe("show and screenshot", () => {
@@ -240,6 +263,21 @@ describe("squawk CLI", () => {
          harness.fetchMock.mockResolvedValueOnce(jsonResponse(detail))
          expect(await harness.run("show", "feat/login#3")).toBe(0)
          expect(harness.stdout()).toContain("  Agent for Jan, 1h ago")
+      })
+
+      it("shows who is working on it and whether it is unread", async () => {
+         const detail = squawkFixture({
+            unread: true,
+            working: { by: janAgent, since: "2026-10-10T11:57:00.000Z" }
+         })
+         harness.fetchMock.mockResolvedValueOnce(jsonResponse(detail))
+         expect(await harness.run("show", "feat/login#3")).toBe(0)
+         expect(harness.stdout()).toContain("Working:   Agent for Jan, since 3 min\n")
+         expect(harness.stdout()).toContain("Unread:    yes\n")
+
+         harness.fetchMock.mockResolvedValueOnce(jsonResponse(squawkFixture()))
+         expect(await harness.run("show", "feat/login#3")).toBe(0)
+         expect(harness.stdout().match(/Working:|Unread:/g)).toHaveLength(2)
       })
 
       it("prints the raw API object with --json", async () => {
@@ -281,6 +319,48 @@ describe("squawk CLI", () => {
          expect(await harness.run("screenshot", "feat/login#3")).toBe(1)
          expect(harness.stderr()).toContain("has no screenshot")
          expect(harness.fetchMock).toHaveBeenCalledTimes(1)
+      })
+   })
+
+   describe("work", () => {
+      const noContent = (): Response => new Response(null, { status: 204 })
+
+      it("claims several squawks at once", async () => {
+         harness.fetchMock.mockResolvedValueOnce(noContent()).mockResolvedValueOnce(noContent())
+         expect(await harness.run("work", "feat/login#3", "#4", "--site", "feat/login")).toBe(0)
+         expect(recordedRequest(harness.fetchMock, 0)).toMatchObject({
+            url: `${detailUrl}/working`,
+            method: "PUT",
+            headers: { accept: "application/json", authorization }
+         })
+         expect(recordedRequest(harness.fetchMock, 1)).toMatchObject({
+            url: `${SERVER}/api/squawks/feat%2Flogin%234/working`,
+            method: "PUT"
+         })
+         expect(harness.stdout()).toBe("Working on feat/login#3, #4.\n")
+      })
+
+      it("releases with --done and prints JSON", async () => {
+         harness.fetchMock.mockResolvedValueOnce(noContent())
+         expect(await harness.run("work", "feat/login#3", "--done", "--json")).toBe(0)
+         expect(recordedRequest(harness.fetchMock, 0)).toMatchObject({
+            url: `${detailUrl}/working`,
+            method: "DELETE"
+         })
+         expect(JSON.parse(harness.stdout())).toEqual({ refs: ["feat/login#3"], working: false })
+      })
+
+      it("reports a token that may not claim", async () => {
+         harness.fetchMock.mockResolvedValueOnce(
+            errorResponse(403, "forbidden", "Only agents claim squawks")
+         )
+         expect(await harness.run("work", "feat/login#3")).toBe(1)
+         expect(harness.stderr()).toBe("squawk: Only agents claim squawks (forbidden)\n")
+      })
+
+      it("validates every reference before calling the server", async () => {
+         expect(await harness.run("work", "feat/login#3", "3")).toBe(1)
+         expect(harness.fetchMock).not.toHaveBeenCalled()
       })
    })
 

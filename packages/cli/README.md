@@ -54,7 +54,8 @@ together with `--site`. Quote `<site>#<n>` in zsh: `'feat/login#3'`.
 | `reply REF (TEXT \| --file PATH \| -)`                                            | `squawk reply 'feat/login#3' "Fixed in a1b2c3d."`                                    |
 | `resolve REF [--comment TEXT]`                                                    | `squawk resolve 'feat/login#3' --comment "Fixed in a1b2c3d."`                        |
 | `reopen REF`                                                                      | `squawk reopen 'feat/login#3'`                                                       |
-| `watch [--site KEY] [--timeout S] [--interval S] [--out DIR]`                     | `squawk watch --site feat/login --json --out /tmp/squawk`                            |
+| `work REF... [--site KEY] [--done]`                                               | `squawk work 'feat/login#3' --done`                                                  |
+| `watch [--site KEY] [--timeout S] [--interval S] [--out DIR] [--no-claim]`        | `squawk watch --site feat/login --json --out /tmp/squawk`                            |
 | `token create --name NAME [--site KEY] [--expires-days N]`                        | `squawk token create --name "Claude feat/login" --site feat/login --expires-days 14` |
 | `token list`                                                                      | `squawk token list`                                                                  |
 | `token revoke ID`                                                                 | `squawk token revoke 6f1c...`                                                        |
@@ -75,6 +76,11 @@ Notes:
 - `list` and `show` print replies an agent wrote through a CLI login as `Agent for <first name>`,
   not as the person; agent tokens appear as `<token name> (agent)`. Drafts are private to their
   author and never listed by the CLI.
+- `list` puts `•` before squawks with activity you have not seen (login tokens only) and adds a
+  `WORKING` column when an agent is on one; `show` adds `Working:` and `Unread:` lines.
+- `work` marks squawks as being worked on by you as an agent; reviewers see it in the overlay and
+  the inbox. `--done` clears it. A `reply`, `resolve` or `reopen` by the same agent clears it too.
+  Only agent tokens and CLI logins may set it.
 - `watch` waits until at least one open squawk needs attention, then prints all of them and exits.
   See [Waiting for squawks](#waiting-for-squawks).
 - `site-key` prints the current git branch as a site key (characters outside
@@ -118,6 +124,10 @@ answered). Then it fetches every such squawk with its thread, saves the screensh
   `{ site, checkedAt, me, items: [ { ...squawk detail, screenshotPath } ] }`. Without `--json`
   each squawk is printed like `show`, with the saved screenshot path, separated by lines.
 - A squawk you only asked a question on stays open but does not come back until someone answers.
+- Every returned squawk is marked as being worked on (`squawk work`) before it is printed, so its
+  `working` field shows the claim. `--no-claim` turns that off. A token that may not claim gets a
+  hint on stderr and the output as usual. Release squawks you do not handle with
+  `squawk work REF --done`.
 
 ```bash
 squawk watch --site feat/login --json --out /tmp/squawk > /tmp/squawk-next.json
