@@ -147,6 +147,13 @@ export const commentSchema = z.object({
 })
 export type Comment = z.infer<typeof commentSchema>
 
+/** Who is working on a squawk right now: an agent token or a user's agent through the CLI. */
+export const workingSchema = z.object({
+   by: authorSchema,
+   since: z.string().datetime()
+})
+export type Working = z.infer<typeof workingSchema>
+
 export const squawkSchema = z.object({
    id: z.string().uuid(),
    siteKey: siteKeySchema,
@@ -169,6 +176,14 @@ export const squawkSchema = z.object({
    lastActivityAt: z.string().datetime(),
    /** Author of the newest comment, or of the body if there are no replies. */
    lastAuthor: authorSchema,
+   /**
+    * True when there is activity the caller has not seen (per user; comments the user wrote
+    * themselves count as seen, comments by their agent do not). Always false for agent tokens
+    * and for drafts.
+    */
+   unread: z.boolean(),
+   /** Set while an agent has claimed the squawk; cleared by its reply, resolve or `DELETE`. */
+   working: workingSchema.nullable(),
    resolvedAt: z.string().datetime().nullable(),
    resolvedBy: authorSchema.nullable()
 })
@@ -189,6 +204,8 @@ export const listSquawksQuerySchema = z.object({
     * the caller's own drafts.
     */
    status: z.enum(["open", "resolved", "all", "draft"]).default("open"),
+   /** Only squawks that are unread for the caller. */
+   unread: z.coerce.boolean().optional(),
    cursor: z.string().optional(),
    limit: z.coerce.number().int().min(1).max(200).default(LIMITS.listPageSize)
 })
@@ -260,6 +277,15 @@ export const submitSquawksResponseSchema = z.object({
    items: z.array(squawkSchema)
 })
 export type SubmitSquawksResponse = z.infer<typeof submitSquawksResponseSchema>
+
+/**
+ * PUT /api/squawks/:id/read marks the squawk read for the calling user (204); DELETE marks it
+ * unread again (204). Both are no-ops for agent tokens and 404 on drafts of other users.
+ *
+ * PUT /api/squawks/:id/working claims the squawk for the caller (204; only agent tokens and users
+ * acting through a CLI login token, 403 otherwise; a claim by someone else is replaced). DELETE
+ * clears it (204, anyone). A comment, resolve or reopen by the claimant clears it as well.
+ */
 
 /** `:id` in squawk routes accepts the uuid or `<siteKey>#<number>` (URL-encoded). */
 export const squawkRefSchema = z.string().min(1)
