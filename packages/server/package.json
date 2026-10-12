@@ -13,7 +13,7 @@
    },
    "dependencies": {
       "@hono/node-server": "^1.19.0",
-      "drizzle-orm": "^0.44.0",
+      "drizzle-orm": "^0.45.2",
       "hono": "^4.10.0",
       "openid-client": "^6.8.0",
       "postgres": "^3.4.0",
