@@ -17,12 +17,24 @@ import type { CONNECT_MESSAGE_TYPE } from "./constants"
 // Principals
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Set when an agent wrote on the user's behalf, i.e. the request carried a login token that was
+ * issued to the CLI. Null when the user wrote it themselves (overlay or inbox).
+ */
+export const authorAgentSchema = z.object({
+   tokenId: z.string().uuid(),
+   /** Token label, e.g. `CLI MiniMo.local`. */
+   name: z.string()
+})
+export type AuthorAgent = z.infer<typeof authorAgentSchema>
+
 export const userAuthorSchema = z.object({
    kind: z.literal("user"),
    id: z.string().uuid(),
    email: z.string(),
    name: z.string().nullable(),
-   avatarUrl: z.string().nullable()
+   avatarUrl: z.string().nullable(),
+   agent: authorAgentSchema.nullable()
 })
 
 export const agentAuthorSchema = z.object({
@@ -86,8 +98,16 @@ export const updateSiteInputSchema = z.object({
 // Squawks and comments
 // ---------------------------------------------------------------------------------------------
 
-export const squawkStatusSchema = z.enum(["open", "resolved"])
+/**
+ * `draft` squawks exist only for their author (review-style: write several, then submit them all
+ * at once). They are invisible to everyone else, including agents, until submitted.
+ */
+export const squawkStatusSchema = z.enum(["draft", "open", "resolved"])
 export type SquawkStatus = z.infer<typeof squawkStatusSchema>
+
+/** Statuses a squawk can be moved to through PATCH; `draft` is left only via submit. */
+export const squawkTargetStatusSchema = z.enum(["open", "resolved"])
+export type SquawkTargetStatus = z.infer<typeof squawkTargetStatusSchema>
 
 export const screenshotSourceSchema = z.enum(["extension", "dom"])
 
@@ -143,6 +163,12 @@ export const squawkSchema = z.object({
    /** Number of replies, not counting the squawk body. */
    commentCount: z.number().int().nonnegative(),
    createdAt: z.string().datetime(),
+   /** When the squawk was submitted (left `draft`). Equals `createdAt` unless it was a draft. */
+   submittedAt: z.string().datetime().nullable(),
+   /** Time of the newest comment, or the body if there are no replies. */
+   lastActivityAt: z.string().datetime(),
+   /** Author of the newest comment, or of the body if there are no replies. */
+   lastAuthor: authorSchema,
    resolvedAt: z.string().datetime().nullable(),
    resolvedBy: authorSchema.nullable()
 })
@@ -158,7 +184,11 @@ export type SquawkDetail = z.infer<typeof squawkDetailSchema>
 export const listSquawksQuerySchema = z.object({
    site: siteKeySchema.optional(),
    page: pageKeySchema.optional(),
-   status: z.enum(["open", "resolved", "all"]).default("open"),
+   /**
+    * `open`, `resolved` and `all` (= open + resolved) never include drafts. `draft` lists only
+    * the caller's own drafts.
+    */
+   status: z.enum(["open", "resolved", "all", "draft"]).default("open"),
    cursor: z.string().optional(),
    limit: z.coerce.number().int().min(1).max(200).default(LIMITS.listPageSize)
 })
@@ -180,6 +210,8 @@ export const createSquawkInputSchema = z.object({
    siteKey: siteKeySchema,
    page: pageKeySchema,
    body: z.string().min(1).max(LIMITS.bodyMaxLength),
+   /** Create as a private draft instead of an open squawk. */
+   draft: z.boolean().default(false),
    anchor: anchorSchema.nullable().default(null),
    meta: squawkMetaSchema.default({}),
    /** Required when a `screenshot` part is sent. */
@@ -199,10 +231,35 @@ export const createCommentInputSchema = z.object({
    body: z.string().min(1).max(LIMITS.bodyMaxLength)
 })
 
-/** PATCH /api/squawks/:id */
-export const updateSquawkInputSchema = z.object({
-   status: squawkStatusSchema
+/**
+ * PATCH /api/squawks/:id. `status` resolves or reopens (not allowed on drafts). `body` edits the
+ * text and is allowed only on the caller's own drafts.
+ */
+export const updateSquawkInputSchema = z
+   .object({
+      status: squawkTargetStatusSchema.optional(),
+      body: z.string().min(1).max(LIMITS.bodyMaxLength).optional()
+   })
+   .refine(input => input.status !== undefined || input.body !== undefined, {
+      message: "status or body is required"
+   })
+export type UpdateSquawkInput = z.infer<typeof updateSquawkInputSchema>
+
+/** DELETE /api/squawks/:id — allowed only on the caller's own drafts. Responds 204. */
+
+/**
+ * POST /api/squawks/submit — turns the caller's own drafts into open squawks in one go.
+ * Ids that are not the caller's drafts fail the whole request with 404.
+ */
+export const submitSquawksInputSchema = z.object({
+   ids: z.array(z.string().uuid()).min(1).max(100)
 })
+export type SubmitSquawksInput = z.infer<typeof submitSquawksInputSchema>
+
+export const submitSquawksResponseSchema = z.object({
+   items: z.array(squawkSchema)
+})
+export type SubmitSquawksResponse = z.infer<typeof submitSquawksResponseSchema>
 
 /** `:id` in squawk routes accepts the uuid or `<siteKey>#<number>` (URL-encoded). */
 export const squawkRefSchema = z.string().min(1)
