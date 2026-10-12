@@ -539,6 +539,12 @@ textarea:focus {
    letter-spacing: 0;
 }
 
+/* Blue means something new to read; the plain count of open squawks stays quiet. */
+.badge:not(.is-unread, .is-draft) {
+   background: var(--sq-surface-3);
+   color: var(--sq-text);
+}
+
 .badge.is-draft {
    border: 1px dashed var(--sq-text-3);
    background: transparent;
@@ -720,6 +726,31 @@ textarea:focus {
 .pin.is-draft:hover,
 .pin.is-draft.is-highlighted {
    opacity: 1;
+}
+
+/* Unread: the same blue dot as in the list, ringed so it reads on a blue pin too. */
+.pin.is-unread::after {
+   content: "";
+   position: absolute;
+   top: -5px;
+   right: -5px;
+   width: 8px;
+   height: 8px;
+   border-radius: 50%;
+   background: var(--sq-primary);
+   box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* An agent is working on it: a soft ring breathes around the pin (static with reduced motion). */
+.pin.is-working::before {
+   content: "";
+   position: absolute;
+   inset: -6px;
+   border: 2px solid var(--sq-primary);
+   border-radius: 16px 16px 16px 4px;
+   opacity: 0.45;
+   pointer-events: none;
+   animation: sq-ring 1.8s ease-out infinite;
 }
 
 /* While picking a spot, existing pins must not swallow the click. */
@@ -1074,6 +1105,11 @@ textarea:focus {
    font-variant-numeric: tabular-nums;
 }
 
+.segment .count.is-unread {
+   background: var(--sq-primary);
+   color: var(--sq-on-primary);
+}
+
 .segment.is-selected {
    background: var(--sq-surface);
    color: var(--sq-text);
@@ -1209,6 +1245,33 @@ textarea:focus {
    opacity: 1;
 }
 
+/* Unread rows: a blue dot left of the avatars and bolder text, like comments in Figma. */
+.unread-dot {
+   position: absolute;
+   top: 18px;
+   left: 0;
+   width: 8px;
+   height: 8px;
+   border-radius: 50%;
+   background: var(--sq-primary);
+}
+
+.item.is-unread::before {
+   display: none;
+}
+
+.item.is-unread .item-head .name {
+   font-weight: 700;
+}
+
+.item.is-unread .item-body {
+   font-weight: 600;
+}
+
+.item.is-unread .item-head .time {
+   color: var(--sq-text-2);
+}
+
 .item-text {
    flex: 1;
    min-width: 0;
@@ -1273,6 +1336,21 @@ textarea:focus {
 .item-meta .resolved,
 .item-meta .resolved svg {
    color: var(--sq-success);
+}
+
+.item-meta .working {
+   height: 18px;
+   padding: 0 6px 0 4px;
+   border-radius: 999px;
+   background: var(--sq-primary-soft);
+   color: var(--sq-primary);
+   font-weight: 500;
+}
+
+.item-meta .working svg,
+.thread-banner .working-icon svg {
+   color: var(--sq-primary);
+   animation: sq-pulse 1.6s ease-in-out infinite;
 }
 
 .item.is-resolved .item-head,
@@ -1642,9 +1720,34 @@ textarea:focus {
    font-weight: 500;
 }
 
+.thread-banner.is-working {
+   background: var(--sq-primary-soft);
+   color: var(--sq-primary);
+}
+
+.working-icon {
+   display: inline-flex;
+}
+
+.working-text {
+   flex: 1;
+   min-width: 0;
+}
+
+.thread-banner .text-button {
+   flex: none;
+   margin: -2px -4px -2px 0;
+   color: inherit;
+   font-weight: 500;
+}
+
 .thread-banner .muted {
    color: inherit;
    opacity: 0.8;
+}
+
+.working-text .muted {
+   white-space: nowrap;
 }
 
 .shot {
@@ -2094,6 +2197,17 @@ textarea:focus {
    }
    to {
       background-position: -200% 0;
+   }
+}
+
+@keyframes sq-ring {
+   from {
+      opacity: 0.7;
+      transform: scale(0.9);
+   }
+   to {
+      opacity: 0;
+      transform: scale(1.3);
    }
 }
 

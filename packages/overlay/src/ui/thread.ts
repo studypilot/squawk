@@ -1,7 +1,7 @@
 import { LIMITS, renderMarkdown } from "@squawk/shared"
 import type { Author, Squawk, SquawkDetail, SquawkTargetStatus } from "@squawk/shared"
 import type { OverlayState } from "../state"
-import { autoGrow, avatar, h, icon, spinner } from "./dom"
+import { autoGrow, avatar, h, icon, spinner, workingSince } from "./dom"
 import type { IconName } from "./dom"
 import { authorName, authorTooltip, isAgent, relativeTime } from "./format"
 
@@ -14,6 +14,10 @@ export interface ThreadHandlers {
    reply(squawkId: string, body: string): Promise<void>
    setStatus(squawkId: string, status: SquawkTargetStatus): Promise<void>
    copyLink(squawk: Squawk): void
+   /** Marks the squawk unread again and closes the thread. */
+   markUnread(squawkId: string): void
+   /** Clears the agent's work claim. */
+   clearWorking(squawkId: string): Promise<void>
    loadScreenshot(path: string): Promise<Blob>
 }
 
@@ -37,6 +41,7 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
    const title = h("span", { class: "thread-title" })
    const status = h("span", { class: "chip status" })
    const banner = h("div", { class: "thread-banner", hidden: true })
+   const workingBanner = h("div", { class: "thread-banner is-working", hidden: true })
    const shot = h("button", {
       class: "shot",
       type: "button",
@@ -62,6 +67,9 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
    const copyButton = iconButton("link", "Copy link", () => {
       if (detail) handlers.copyLink(detail)
    })
+   const unreadButton = iconButton("unread", "Mark as unread (U)", () =>
+      handlers.markUnread(squawkId)
+   )
    const pageLink = h(
       "a",
       {
@@ -82,10 +90,12 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
          shotButton,
          pageLink,
          copyButton,
+         unreadButton,
          statusButton,
          closeButton
       ]),
       banner,
+      workingBanner,
       shot,
       messages,
       h("div", { class: "thread-footer" }, [
@@ -140,6 +150,30 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
       const next: SquawkTargetStatus = detail.status === "open" ? "resolved" : "open"
       void run(statusButton, () => handlers.setStatus(squawkId, next))
    })
+
+   function renderWorking(next: SquawkDetail): void {
+      const working = next.working
+      workingBanner.hidden = !working
+      if (!working) return workingBanner.replaceChildren()
+      const clear = h("button", { class: "text-button", type: "button" }, ["Clear"])
+      clear.addEventListener("click", () => {
+         clear.disabled = true
+         error.hidden = true
+         handlers.clearWorking(squawkId).catch((failure: unknown) => {
+            error.textContent = failure instanceof Error ? failure.message : "Clearing failed"
+            error.hidden = false
+            clear.disabled = false
+         })
+      })
+      workingBanner.replaceChildren(
+         h("span", { class: "working-icon" }, [icon("sparkle", 14)]),
+         h("span", { class: "working-text", title: authorTooltip(working.by) }, [
+            `${authorName(working.by)} is working on this`,
+            h("span", { class: "muted" }, [" · ", workingSince(working.since)])
+         ]),
+         clear
+      )
+   }
 
    function openLightbox(): void {
       if (!screenshotUrl) return
@@ -219,6 +253,7 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
          )
          statusButton.title = resolved ? "Reopen" : "Resolve (R)"
          statusButton.classList.toggle("is-resolved", resolved)
+         renderWorking(next)
          banner.hidden = !resolved
          if (resolved) {
             banner.replaceChildren(

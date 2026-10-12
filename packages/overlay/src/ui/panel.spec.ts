@@ -180,3 +180,70 @@ describe("panel chrome", () => {
       expect(panelHandlers.signOut).toHaveBeenCalledOnce()
    })
 })
+
+describe("unread and working", () => {
+   it("marks unread rows with a dot and counts them in the Unread segment", () => {
+      const element = render(
+         listState([
+            squawkFixture({ id: crypto.randomUUID(), number: 1, unread: true }),
+            squawkFixture({ id: crypto.randomUUID(), number: 2 }),
+            squawkFixture({ id: crypto.randomUUID(), number: 3, status: "resolved", unread: true })
+         ])
+      )
+      const rows = [...element.querySelectorAll(".item")]
+      expect(rows.map(row => row.classList.contains("is-unread"))).toEqual([true, false])
+      expect(rows[0]?.querySelector(".unread-dot")).not.toBeNull()
+      expect(rows[1]?.querySelector(".unread-dot")).toBeNull()
+      const segments = [...element.querySelectorAll(".segment")].map(segment => segment.textContent)
+      expect(segments).toEqual(["Open2", "Unread2", "Resolved1"])
+      expect(element.querySelector(".segment .count.is-unread")?.textContent).toBe("2")
+   })
+
+   it("filters to unread squawks of either status", () => {
+      const panelHandlers = handlers()
+      const state = listState([
+         squawkFixture({ id: crypto.randomUUID(), number: 1, unread: true }),
+         squawkFixture({ id: crypto.randomUUID(), number: 2 }),
+         squawkFixture({ id: crypto.randomUUID(), number: 3, status: "resolved", unread: true })
+      ])
+      const element = render(state, panelHandlers)
+      ;[...element.querySelectorAll<HTMLButtonElement>(".segment")][1]?.click()
+      expect(panelHandlers.setFilter).toHaveBeenCalledWith("unread")
+
+      const unread = render({ ...state, filter: "unread" })
+      const numbers = [...unread.querySelectorAll(".item .number")].map(
+         number => number.textContent
+      )
+      expect(numbers.sort()).toEqual(["#1", "#3"])
+   })
+
+   it("keeps the open thread in the Unread list after it was read", () => {
+      const squawk = squawkFixture({ unread: false })
+      const element = render(listState([squawk], { filter: "unread", threadId: squawk.id }))
+      expect(element.querySelectorAll(".item")).toHaveLength(1)
+      expect(
+         render(listState([squawk], { filter: "unread" })).querySelector(".empty")?.textContent
+      ).toContain("All caught up")
+   })
+
+   it("shows a working chip with the claim's age", () => {
+      vi.useFakeTimers({ now: new Date("2026-10-10T14:00:00.000Z") })
+      try {
+         const element = render(
+            listState([
+               squawkFixture({
+                  commentCount: 0,
+                  working: { by: ADAS_AGENT, since: "2026-10-10T11:50:00.000Z" }
+               })
+            ])
+         )
+         const chip = element.querySelector(".item-meta .working")
+         expect(chip?.textContent).toBe("working · 2 h")
+         expect(chip?.getAttribute("title")).toBe(
+            "Agent · for Ada is working on this (CLI MiniMo.local)"
+         )
+      } finally {
+         vi.useRealTimers()
+      }
+   })
+})

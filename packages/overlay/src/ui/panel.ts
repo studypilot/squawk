@@ -4,7 +4,7 @@ import type { LoginState } from "../auth"
 import { groupByPage } from "../state"
 import type { ListFilter, OverlayState } from "../state"
 import { copyText } from "./clipboard"
-import { autoGrow, avatar, avatarStack, h, icon, spinner, squawkMark } from "./dom"
+import { autoGrow, avatar, avatarStack, h, icon, spinner, squawkMark, workingSince } from "./dom"
 import { authorName, authorTooltip, plural, relativeTime } from "./format"
 import { iconButton } from "./thread"
 
@@ -64,8 +64,10 @@ export function createPanel(handlers: PanelHandlers): Panel {
    newButton.classList.add("new-button")
    const openTab = segment("open", "Open")
    const resolvedTab = segment("resolved", "Resolved")
+   const unreadTab = segment("unread", "Unread")
    const segmented = h("div", { class: "segmented", role: "group", "aria-label": "Filter" }, [
       openTab.button,
+      unreadTab.button,
       resolvedTab.button
    ])
    const header = h("div", { class: "panel-header" }, [
@@ -175,12 +177,16 @@ export function createPanel(handlers: PanelHandlers): Panel {
    }
 
    function renderSegments(state: OverlayState): void {
-      const counts = { open: 0, resolved: 0 }
+      const counts = { open: 0, resolved: 0, unread: 0 }
       for (const squawk of state.squawks) {
-         if (squawk.status !== "draft") counts[squawk.status]++
+         if (squawk.status === "draft") continue
+         counts[squawk.status]++
+         if (squawk.unread) counts.unread++
       }
+      unreadTab.count.classList.toggle("is-unread", counts.unread > 0)
       for (const [filter, tab] of [
          ["open", openTab],
+         ["unread", unreadTab],
          ["resolved", resolvedTab]
       ] as const) {
          tab.count.textContent = String(counts[filter])
@@ -215,10 +221,11 @@ export function createPanel(handlers: PanelHandlers): Panel {
    function listItem(squawk: Squawk, selected: boolean): HTMLElement {
       const replies = squawk.commentCount
       const resolved = squawk.status === "resolved"
+      const working = squawk.working
       const row = h(
          "button",
          {
-            class: `item${resolved ? " is-resolved" : ""}${selected ? " is-selected" : ""}`,
+            class: `item${resolved ? " is-resolved" : ""}${selected ? " is-selected" : ""}${squawk.unread ? " is-unread" : ""}`,
             type: "button",
             "data-id": squawk.id,
             "aria-current": selected ? "true" : null,
@@ -227,6 +234,10 @@ export function createPanel(handlers: PanelHandlers): Panel {
             onpointerleave: () => handlers.hoverSquawk(null)
          },
          [
+            squawk.unread &&
+               h("span", { class: "unread-dot", title: "Unread" }, [
+                  h("span", { class: "sr-only" }, ["Unread"])
+               ]),
             avatarStack([squawk.author, squawk.lastAuthor]),
             h("div", { class: "item-text" }, [
                h("div", { class: "item-head" }, [
@@ -239,8 +250,17 @@ export function createPanel(handlers: PanelHandlers): Panel {
                   h("span", { class: "number" }, [`#${squawk.number}`])
                ]),
                h("div", { class: "item-body" }, [markdownPreview(squawk.body)]),
-               (replies > 0 || resolved) &&
+               (replies > 0 || resolved || working) &&
                   h("div", { class: "item-meta" }, [
+                     working &&
+                        h(
+                           "span",
+                           {
+                              class: "working",
+                              title: `${authorName(working.by)} is working on this (${authorTooltip(working.by)})`
+                           },
+                           [icon("sparkle", 12), "working · ", workingSince(working.since)]
+                        ),
                      resolved && h("span", { class: "resolved" }, [icon("check", 12), "Resolved"]),
                      replies > 0 &&
                         h(
@@ -441,7 +461,7 @@ export function createPanel(handlers: PanelHandlers): Panel {
                   h(
                      "button",
                      {
-                        class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}${squawk.status === "draft" ? " is-draft" : ""}`,
+                        class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}${squawk.status === "draft" ? " is-draft" : ""}${squawk.unread ? " is-unread" : ""}`,
                         type: "button",
                         title: `#${squawk.number}: ${markdownPreview(squawk.body)}`,
                         onclick: () =>
@@ -584,6 +604,13 @@ function userCode(code: string): HTMLElement {
 }
 
 function emptyState(filter: ListFilter): HTMLElement {
+   if (filter === "unread") {
+      return h("div", { class: "empty" }, [
+         h("span", { class: "empty-icon" }, [icon("check", 20)]),
+         h("div", { class: "title" }, ["All caught up"]),
+         h("div", { class: "hint" }, ["New replies by agents and teammates show up here."])
+      ])
+   }
    const open = filter === "open"
    return h("div", { class: "empty" }, [
       h("span", { class: "empty-icon" }, [icon(open ? "comment" : "check", 20)]),

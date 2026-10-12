@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Squawk } from "@squawk/shared"
 import { version } from "../package.json"
 import type { SquawkApi } from "./app"
-import { ADA, DRAFT_ID, SQUAWK_ID, TOKEN_ID, draftFixture, squawkFixture } from "./test-fixtures"
+import {
+   ADA,
+   ADAS_AGENT,
+   DRAFT_ID,
+   SQUAWK_ID,
+   TOKEN_ID,
+   draftFixture,
+   squawkFixture
+} from "./test-fixtures"
 
 const SERVER = "http://localhost:3000"
 
@@ -55,12 +63,40 @@ async function boot(queue: unknown[][] = []): Promise<SquawkApi> {
    return window.Squawk as SquawkApi
 }
 
+/**
+ * Every test boots a fresh overlay, and the overlay has no teardown. Its window listeners and
+ * DOM observer are recorded here and removed after the test, so an earlier overlay neither
+ * reacts to the next test's keys nor re-mounts its host when that test advances the clock.
+ */
+const leftovers: (() => void)[] = []
+
+function trackOverlaySideEffects(): void {
+   const addListener = window.addEventListener.bind(window)
+   vi.spyOn(window, "addEventListener").mockImplementation((type, listener, options) => {
+      addListener(type, listener, options)
+      leftovers.push(() => window.removeEventListener(type, listener, options))
+   })
+   const NativeObserver = MutationObserver
+   vi.stubGlobal(
+      "MutationObserver",
+      class extends NativeObserver {
+         constructor(callback: MutationCallback) {
+            super(callback)
+            leftovers.push(() => this.disconnect())
+         }
+      }
+   )
+}
+
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
 let drafts: Squawk[]
+let listed: Squawk
 
 beforeEach(() => {
    vi.useFakeTimers()
+   trackOverlaySideEffects()
    drafts = []
+   listed = squawkFixture()
    fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input)
       const method = init?.method ?? "GET"
@@ -68,7 +104,7 @@ beforeEach(() => {
          return jsonResponse({ items: drafts, nextCursor: null })
       }
       if (url.includes("/api/squawks?")) {
-         return jsonResponse({ items: [squawkFixture()], nextCursor: null })
+         return jsonResponse({ items: [listed], nextCursor: null })
       }
       if (url.endsWith("/api/me")) {
          return jsonResponse({
@@ -90,8 +126,16 @@ beforeEach(() => {
          const body = JSON.parse(String(init?.body)) as { status: "open" | "resolved" }
          return jsonResponse(squawkFixture({ status: body.status }))
       }
+      if (url.endsWith(`/api/squawks/${SQUAWK_ID}/read`)) {
+         listed = { ...listed, unread: method === "DELETE" }
+         return new Response(null, { status: 204 })
+      }
+      if (url.endsWith(`/api/squawks/${SQUAWK_ID}/working`) && method === "DELETE") {
+         listed = { ...listed, working: null }
+         return new Response(null, { status: 204 })
+      }
       if (url.endsWith(`/api/squawks/${SQUAWK_ID}`)) {
-         return jsonResponse({ ...squawkFixture(), comments: [] })
+         return jsonResponse({ ...listed, comments: [] })
       }
       return jsonResponse({ error: { code: "not_found", message: "Not found" } }, 404)
    })
@@ -100,6 +144,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+   for (const cleanUp of leftovers.splice(0)) cleanUp()
+   vi.restoreAllMocks()
    document.getElementById("squawk-root")?.remove()
    document.head.innerHTML = ""
    localStorage.clear()
@@ -320,5 +366,113 @@ describe("keyboard shortcuts", () => {
       expect(requests()).toContainEqual({ call: `DELETE /tokens/${TOKEN_ID}`, body: undefined })
       expect(localStorage.getItem(`squawk:${SERVER}:token`)).toBeNull()
       expect(text(".sign-in")).toContain("Sign in")
+   })
+})
+
+describe("unread and working", () => {
+   function badge(): HTMLElement | null {
+      return shadow().querySelector<HTMLElement>(".badge:not(.is-draft)")
+   }
+
+   it("counts unread squawks on the launcher before open ones", async () => {
+      listed = squawkFixture({ unread: true })
+      await boot()
+      expect(badge()?.textContent).toBe("1")
+      expect(badge()?.classList.contains("is-unread")).toBe(true)
+      expect(shadow().querySelector(".launcher")?.getAttribute("title")).toBe("1 unread · 1 open")
+   })
+
+   it("shows the open count quietly when everything is read", async () => {
+      await boot()
+      expect(badge()?.textContent).toBe("1")
+      expect(badge()?.classList.contains("is-unread")).toBe(false)
+      expect(shadow().querySelector(".launcher")?.getAttribute("title")).toBe("1 open")
+   })
+
+   it("marks a thread read when it opens and unread again with u", async () => {
+      listed = squawkFixture({ unread: true })
+      const squawk = await boot()
+      squawk.open()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(shadow().querySelector(".item.is-unread")).not.toBeNull()
+
+      click(".item")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(requests()).toContainEqual({ call: `PUT /squawks/${SQUAWK_ID}/read`, body: undefined })
+      expect(shadow().querySelector(".item.is-unread")).toBeNull()
+
+      press("u")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(requests()).toContainEqual({
+         call: `DELETE /squawks/${SQUAWK_ID}/read`,
+         body: undefined
+      })
+      expect(shadow().querySelector(".thread")).toBeNull()
+      expect(shadow().querySelector(".item.is-unread")).not.toBeNull()
+
+      // Polling keeps the server's state; the thread stays unread until it is opened again.
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(shadow().querySelector(".item.is-unread")).not.toBeNull()
+   })
+
+   it("does not mark read squawks read again", async () => {
+      await boot()
+      press("j")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(requests().some(request => request.call.endsWith("/read"))).toBe(false)
+   })
+
+   it("marks unread from the thread header", async () => {
+      await boot()
+      press("j")
+      await vi.advanceTimersByTimeAsync(0)
+      click('.thread [aria-label="Mark as unread (U)"]')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(requests()).toContainEqual({
+         call: `DELETE /squawks/${SQUAWK_ID}/read`,
+         body: undefined
+      })
+      expect(shadow().querySelector(".thread")).toBeNull()
+   })
+
+   it("lists unread squawks under Unread", async () => {
+      listed = squawkFixture({ unread: true })
+      const squawk = await boot()
+      squawk.open()
+      await vi.advanceTimersByTimeAsync(0)
+      click(".segment:nth-child(2)")
+      expect(text(".segment.is-selected")).toBe("Unread1")
+      expect(shadow().querySelectorAll(".item")).toHaveLength(1)
+
+      // Without a pin the thread opens in the panel; back in the list it is read.
+      click(".item")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(text(".thread-title")).toBe("#12")
+      press("Escape")
+      expect(text(".empty")).toContain("All caught up")
+   })
+
+   it("shows a working claim and clears it from the thread", async () => {
+      listed = squawkFixture({
+         working: { by: ADAS_AGENT, since: new Date(Date.now() - 4 * 60_000).toISOString() }
+      })
+      const squawk = await boot()
+      squawk.open()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(text(".item .working")).toBe("working · 4 min")
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(text(".item .working")).toBe("working · 5 min")
+
+      click(".item")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(text(".thread-banner.is-working")).toContain("Agent · for Ada is working on this")
+      click(".thread-banner.is-working .text-button")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(requests()).toContainEqual({
+         call: `DELETE /squawks/${SQUAWK_ID}/working`,
+         body: undefined
+      })
+      expect(shadow().querySelector<HTMLElement>(".thread-banner.is-working")?.hidden).toBe(true)
+      expect(shadow().querySelector(".item .working")).toBeNull()
    })
 })

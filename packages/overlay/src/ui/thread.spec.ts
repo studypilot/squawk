@@ -11,6 +11,8 @@ function handlers(): ThreadHandlers {
       reply: vi.fn(async () => undefined),
       setStatus: vi.fn(async () => undefined),
       copyLink: vi.fn(),
+      markUnread: vi.fn(),
+      clearWorking: vi.fn(async () => undefined),
       loadScreenshot: vi.fn(async () => new Blob())
    }
 }
@@ -157,5 +159,64 @@ describe("reply field", () => {
       const { threadHandlers, element } = setup()
       element.querySelector<HTMLButtonElement>(".resolve")?.click()
       expect(threadHandlers.setStatus).toHaveBeenCalledWith(SQUAWK_ID, "resolved")
+   })
+})
+
+describe("unread and working", () => {
+   it("marks the thread unread from the header", () => {
+      const threadHandlers = handlers()
+      const element = renderThread({ ...squawkFixture(), comments: [] }, threadHandlers)
+      const button = element.querySelector<HTMLButtonElement>('[aria-label="Mark as unread (U)"]')
+      button?.click()
+      expect(threadHandlers.markUnread).toHaveBeenCalledWith(SQUAWK_ID)
+   })
+
+   it("shows who is working on the squawk and clears the claim", async () => {
+      vi.useFakeTimers({ now: new Date("2026-10-10T12:04:30.000Z") })
+      try {
+         const threadHandlers = handlers()
+         const element = renderThread(
+            {
+               ...squawkFixture({
+                  working: { by: ADAS_AGENT, since: "2026-10-10T12:00:00.000Z" }
+               }),
+               comments: []
+            },
+            threadHandlers
+         )
+         const banner = element.querySelector<HTMLElement>(".thread-banner.is-working")
+         expect(banner?.hidden).toBe(false)
+         expect(banner?.textContent).toBe("Agent · for Ada is working on this · 4 minClear")
+         expect(banner?.querySelector("[data-since]")?.getAttribute("data-since")).toBe(
+            "2026-10-10T12:00:00.000Z"
+         )
+         banner?.querySelector<HTMLButtonElement>(".text-button")?.click()
+         expect(threadHandlers.clearWorking).toHaveBeenCalledWith(SQUAWK_ID)
+      } finally {
+         vi.useRealTimers()
+      }
+   })
+
+   it("has no working banner without a claim", () => {
+      const element = renderThread({ ...squawkFixture(), comments: [] })
+      expect(element.querySelector<HTMLElement>(".thread-banner.is-working")?.hidden).toBe(true)
+   })
+
+   it("shows a failed clear inline", async () => {
+      const threadHandlers = handlers()
+      threadHandlers.clearWorking = vi.fn(async () => {
+         throw new Error("Server down")
+      })
+      const element = renderThread(
+         {
+            ...squawkFixture({ working: { by: ADAS_AGENT, since: "2026-10-10T12:00:00.000Z" } }),
+            comments: []
+         },
+         threadHandlers
+      )
+      element.querySelector<HTMLButtonElement>(".thread-banner.is-working .text-button")?.click()
+      await vi.waitFor(() =>
+         expect(element.querySelector(".error")?.textContent).toBe("Server down")
+      )
    })
 })

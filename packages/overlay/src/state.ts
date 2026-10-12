@@ -28,7 +28,8 @@ export function createStore<State extends object>(initial: State): Store<State> 
 
 /** `thread` shows the open thread inside the panel; otherwise it floats next to its pin. */
 export type PanelView = "closed" | "list" | "thread"
-export type ListFilter = "open" | "resolved"
+/** `unread` lists unread squawks of either status; drafts always live in the review block. */
+export type ListFilter = "open" | "resolved" | "unread"
 export type Mode = "idle" | "pin" | "busy"
 
 export interface OverlayState {
@@ -62,14 +63,22 @@ function byLastActivity(first: Squawk, second: Squawk): number {
 }
 
 /**
+ * Whether a squawk belongs to the selected filter. Opening a thread marks it read right away, so
+ * the open thread stays in the Unread list until it is closed; otherwise its row would vanish
+ * under the pointer and `j`/`k` would lose their place.
+ */
+export function matchesFilter(state: OverlayState, squawk: Squawk): boolean {
+   if (state.filter !== "unread") return squawk.status === state.filter
+   return squawk.status !== "draft" && (squawk.unread || squawk.id === state.threadId)
+}
+
+/**
  * The squawks of the selected filter grouped by page, the current page first. This is the order
  * of the list and of keyboard navigation.
  */
 export function groupByPage(state: OverlayState): [page: string, squawks: Squawk[]][] {
    const groups = new Map<string, Squawk[]>([[state.pageKey, []]])
-   const visible = state.squawks
-      .filter(squawk => squawk.status === state.filter)
-      .sort(byLastActivity)
+   const visible = state.squawks.filter(squawk => matchesFilter(state, squawk)).sort(byLastActivity)
    for (const squawk of visible) {
       const group = groups.get(squawk.page) ?? []
       group.push(squawk)

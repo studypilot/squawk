@@ -26,7 +26,7 @@ import styles from "./styles.css?inline"
 import { copyText } from "./ui/clipboard"
 import { createComposer } from "./ui/composer"
 import type { Composer, SubmitMode } from "./ui/composer"
-import { plural } from "./ui/format"
+import { plural, workingDuration } from "./ui/format"
 import { createLauncher } from "./ui/launcher"
 import { createPanel } from "./ui/panel"
 import { createPinMode } from "./ui/pin-mode"
@@ -59,6 +59,8 @@ export interface SquawkApi {
 const PANEL_POLL_MS = 5_000
 const BACKGROUND_POLL_MS = 60_000
 const MUTATION_DEBOUNCE_MS = 250
+/** How often the "working · 4 min" durations move on. */
+const WORKING_TICK_MS = 30_000
 /** Squawks are listed in pages of 200; five pages cover any realistic preview site. */
 const LIST_PAGE_LIMIT = 200
 const LIST_MAX_PAGES = 5
@@ -162,6 +164,8 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       reply,
       setStatus,
       copyLink,
+      markUnread,
+      clearWorking,
       loadScreenshot: path => api.fetchScreenshot(path)
    }
    shadow.append(
@@ -177,13 +181,19 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
 
    // ---- rendering --------------------------------------------------------------------------
 
-   /** Open squawks, resolved ones while that list is shown, drafts, and the open thread. */
+   /**
+    * Open squawks, resolved ones while that list (or the unread list, for unread ones) is shown,
+    * drafts, and the open thread.
+    */
    function pinnedSquawks(state: OverlayState): Squawk[] {
-      const showResolved = state.panel !== "closed" && state.filter === "resolved"
+      const listing = state.panel !== "closed"
       const shown = state.squawks.filter(
          squawk =>
             squawk.page === state.pageKey &&
-            (squawk.status === "open" || showResolved || squawk.id === state.threadId)
+            (squawk.status === "open" ||
+               squawk.id === state.threadId ||
+               (listing && state.filter === "resolved") ||
+               (listing && state.filter === "unread" && squawk.unread))
       )
       const drafts = state.drafts.filter(draft => draft.page === state.pageKey)
       return [...shown, ...drafts]
@@ -290,6 +300,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       try {
          const detail = await api.getSquawk(squawkId)
          if (store.get().threadId !== squawkId) return
+         markRead(detail)
          const current = store.get().thread
          if (current && JSON.stringify(current) === JSON.stringify(detail)) return
          store.set({ thread: detail })
@@ -299,6 +310,49 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          toast.show("This squawk no longer exists")
          closeThread()
       }
+   }
+
+   /** Updates a squawk in the list and in the open thread, e.g. after a read or a cleared claim. */
+   function patchSquawk(squawkId: string, patch: Partial<Squawk>): void {
+      const { squawks, thread } = store.get()
+      store.set({
+         squawks: squawks.map(squawk =>
+            squawk.id === squawkId ? { ...squawk, ...patch } : squawk
+         ),
+         thread: thread?.id === squawkId ? { ...thread, ...patch } : thread
+      })
+   }
+
+   let readRequest: Promise<void> = Promise.resolve()
+
+   /**
+    * An open thread is read: right after it loaded, and again whenever polling brings new
+    * activity into it. The dot goes away at once; a failed request comes back with the next poll.
+    */
+   function markRead(detail: Squawk): void {
+      const listed = store.get().squawks.find(squawk => squawk.id === detail.id)
+      if (!detail.unread && !listed?.unread) return
+      if (listed) patchSquawk(detail.id, { unread: false })
+      readRequest = api.setRead(detail.id, true).catch(() => undefined)
+   }
+
+   /** `u` or the thread header: back to unread, and the thread closes like in Figma. */
+   function markUnread(squawkId: string): void {
+      if (store.get().threadId === squawkId) closeThread()
+      patchSquawk(squawkId, { unread: true })
+      // After a pending "read" so the server never ends up read when the user asked for unread.
+      void readRequest
+         .then(() => api.setRead(squawkId, false))
+         .catch(() => {
+            patchSquawk(squawkId, { unread: false })
+            toast.show("Could not mark the squawk unread")
+         })
+   }
+
+   /** Removes a stale "working" claim, e.g. of an agent that stopped without replying. */
+   async function clearWorking(squawkId: string): Promise<void> {
+      await api.clearWorking(squawkId)
+      patchSquawk(squawkId, { working: null })
    }
 
    let pollTimer: ReturnType<typeof setTimeout> | undefined
@@ -639,7 +693,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
 
    /**
     * Shortcuts, from the page and from inside the overlay: `c` new squawk, `j`/`k` (or `]`/`[`)
-    * next/previous squawk, `r` resolve, `Esc` closes the innermost thing.
+    * next/previous squawk, `r` resolve, `u` mark unread, `Esc` closes the innermost thing.
     */
    function handleShortcut(event: KeyboardEvent): void {
       if (event.defaultPrevented || event.isComposing) return
@@ -670,6 +724,12 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
             if (!store.get().thread) return false
             resolveOpenThread()
             return true
+         case "u": {
+            const { thread } = store.get()
+            if (!thread) return false
+            markUnread(thread.id)
+            return true
+         }
          default:
             return false
       }
@@ -698,6 +758,12 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    }
 
    window.addEventListener("keydown", handleShortcut)
+
+   setInterval(() => {
+      for (const label of shadow.querySelectorAll<HTMLElement>("[data-since]")) {
+         label.textContent = workingDuration(label.dataset.since ?? "")
+      }
+   }, WORKING_TICK_MS)
 
    // Clicks outside the thread popover close it, like any other popover.
    window.addEventListener(

@@ -86,6 +86,10 @@ export interface ApiClient {
    deleteSquawk(squawkId: string): Promise<void>
    /** Turns own drafts into open squawks in one go. */
    submitSquawks(ids: string[]): Promise<Squawk[]>
+   /** Marks a squawk read (`true`) or unread again (`false`) for the signed-in user. */
+   setRead(squawkId: string, read: boolean): Promise<void>
+   /** Clears an agent's work claim on a squawk; anyone may. */
+   clearWorking(squawkId: string): Promise<void>
    /** Revokes a token, here the overlay's own login token on sign-out. */
    revokeToken(tokenId: string): Promise<void>
    /** Fetches an authenticated screenshot; `path` is the relative `screenshot.url`. */
@@ -182,6 +186,14 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
             json: { ids }
          })
          return result.items
+      },
+      async setRead(squawkId, read) {
+         await send(`/squawks/${encodeURIComponent(squawkId)}/read`, {
+            method: read ? "PUT" : "DELETE"
+         })
+      },
+      async clearWorking(squawkId) {
+         await send(`/squawks/${encodeURIComponent(squawkId)}/working`, { method: "DELETE" })
       },
       async revokeToken(tokenId) {
          await send(`/tokens/${encodeURIComponent(tokenId)}`, { method: "DELETE" })

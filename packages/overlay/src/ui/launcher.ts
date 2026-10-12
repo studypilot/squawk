@@ -13,8 +13,8 @@ export interface Launcher {
 }
 
 /**
- * Floating pill: Squawk mark, the panel button with the count of open squawks on this page and
- * of unsent drafts, and the pin-mode button.
+ * Floating pill: Squawk mark, the panel button with the count of unread squawks on this page (or
+ * of open ones when everything is read) and of unsent drafts, and the pin-mode button.
  */
 export function createLauncher(handlers: LauncherHandlers): Launcher {
    const badge = h("span", { class: "badge", hidden: true })
@@ -53,22 +53,28 @@ export function createLauncher(handlers: LauncherHandlers): Launcher {
          const pinLabel = pinning ? "Cancel pinning" : "New squawk (C)"
          pinButton.title = pinLabel
          pinButton.setAttribute("aria-label", pinLabel)
-         const openCount = state.squawks.filter(
-            squawk => squawk.status === "open" && squawk.page === state.pageKey
-         ).length
-         badge.hidden = openCount === 0
-         badge.textContent = openCount > 99 ? "99+" : String(openCount)
+         const onPage = state.squawks.filter(squawk => squawk.page === state.pageKey)
+         const openCount = onPage.filter(squawk => squawk.status === "open").length
+         const unreadCount = onPage.filter(squawk => squawk.unread).length
+         const badgeCount = unreadCount > 0 ? unreadCount : openCount
+         badge.hidden = badgeCount === 0
+         badge.classList.toggle("is-unread", unreadCount > 0)
+         badge.textContent = badgeCount > 99 ? "99+" : String(badgeCount)
          const draftCount = state.drafts.length
          draftBadge.hidden = draftCount === 0
          draftBadge.textContent = draftCount > 99 ? "99+" : String(draftCount)
-         const label = [
-            "Squawks",
-            openCount > 0 && `${openCount} open on this page`,
-            draftCount > 0 && `${plural(draftCount, "draft")} not sent`
+         const counts = [
+            unreadCount > 0 && `${unreadCount} unread`,
+            openCount > 0 && `${openCount} open`
          ]
             .filter(Boolean)
+            .join(" · ")
+         const drafts = draftCount > 0 && `${plural(draftCount, "draft")} not sent`
+         const title = [counts || "Squawks", drafts].filter(Boolean).join(", ")
+         const label = ["Squawks", counts && `${counts} on this page`, drafts]
+            .filter(Boolean)
             .join(", ")
-         panelButton.title = label
+         panelButton.title = title
          panelButton.setAttribute("aria-label", label)
       }
    }

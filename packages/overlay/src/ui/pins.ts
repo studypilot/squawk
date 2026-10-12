@@ -128,11 +128,24 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
             const draft = squawk.status === "draft"
             const label = draft
                ? `Draft #${squawk.number}, not sent yet`
-               : `Squawk #${squawk.number} by ${authorName(squawk.author)}`
+               : [
+                    `Squawk #${squawk.number} by ${authorName(squawk.author)}`,
+                    squawk.unread && "unread",
+                    squawk.working && `${authorName(squawk.working.by)} is working on it`
+                 ]
+                    .filter(Boolean)
+                    .join(", ")
+            const classes = [
+               "pin",
+               resolved && "is-resolved",
+               draft && "is-draft",
+               squawk.unread && "is-unread",
+               squawk.working && "is-working"
+            ]
             const button = h(
                "button",
                {
-                  class: `pin${resolved ? " is-resolved" : ""}${draft ? " is-draft" : ""}`,
+                  class: classes.filter(Boolean).join(" "),
                   type: "button",
                   "aria-label": label,
                   onclick: () => {

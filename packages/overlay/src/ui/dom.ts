@@ -1,5 +1,5 @@
 import type { Author } from "@squawk/shared"
-import { authorKey, authorTooltip, isAgent } from "./format"
+import { authorKey, authorTooltip, isAgent, workingDuration } from "./format"
 
 type AttributeValue = string | number | boolean | null | undefined | ((event: Event) => void)
 type Child = Node | string | null | undefined | false
@@ -44,6 +44,8 @@ const ICONS = {
    external:
       '<path d="M9.5 2.5h4v4M13.5 2.5L8 8M11 9v3.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1H7"/>',
    expand: '<path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/>',
+   unread:
+      '<path d="M9 3H4.5a2 2 0 0 0-2 2v5a1.5 1.5 0 0 0 1.5 1.5V14l3.5-2.5h4a2 2 0 0 0 2-2V7"/><circle cx="12.5" cy="3.5" r="2" fill="currentColor" stroke="none"/>',
    send: '<path d="M2.5 8l11-5-4 11-2-4.5z"/>',
    inbox: '<path d="M2.5 9h3l1 2h3l1-2h3M2.5 9V4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2V9M2.5 9v2.5a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V9"/>'
 } as const
@@ -133,6 +135,11 @@ export function avatarStack(authors: Author[], limit = 2): HTMLElement {
       { class: "avatar-stack" },
       unique.slice(0, limit).map(author => avatar(author, 24))
    )
+}
+
+/** How long a work claim runs; the overlay refreshes every `[data-since]` twice a minute. */
+export function workingSince(since: string): HTMLElement {
+   return h("span", { "data-since": since }, [workingDuration(since)])
 }
 
 /** Grows a textarea with its content between `minLines` and `maxLines` lines. */

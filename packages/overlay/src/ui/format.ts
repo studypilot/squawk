@@ -46,6 +46,16 @@ export function relativeTime(isoDate: string, now: number = Date.now()): string 
    return new Date(isoDate).toLocaleDateString()
 }
 
+/** How long an agent has been working on a squawk: `just now`, `4 min`, `2 h`, `3 d`. */
+export function workingDuration(since: string, now: number = Date.now()): string {
+   const minutes = Math.floor((now - new Date(since).getTime()) / 60_000)
+   if (minutes < 1) return "just now"
+   if (minutes < 60) return `${minutes} min`
+   const hours = Math.floor(minutes / 60)
+   if (hours < 24) return `${hours} h`
+   return `${Math.floor(hours / 24)} d`
+}
+
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
    return `${count} ${count === 1 ? singular : pluralForm}`
 }
