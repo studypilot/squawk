@@ -8,4 +8,9 @@ export class NotLoggedInError extends CliError {
    override readonly exitCode: number = 2
 }
 
+/** `squawk watch` gave up without finding anything. Exits with 3. */
+export class WatchTimeoutError extends CliError {
+   override readonly exitCode: number = 3
+}
+
 export const LOGIN_HINT = 'Run "squawk login --server <url>" or set SQUAWK_SERVER and SQUAWK_TOKEN.'

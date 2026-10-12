@@ -15,7 +15,8 @@ export async function showCommand(
    printLine(context, renderDetail(detail, context.now()))
 }
 
-function renderDetail(detail: SquawkDetail, now: Date): string {
+/** The text form of a squawk. With `screenshotPath`, points there instead of the download hint. */
+export function renderDetail(detail: SquawkDetail, now: Date, screenshotPath?: string): string {
    const lines = [`${detail.siteKey}#${detail.number}  [${detail.status}]  ${detail.id}`, ""]
    const field = (label: string, value: string | undefined): void => {
       if (value !== undefined && value !== "") lines.push(`${`${label}:`.padEnd(11)}${value}`)
@@ -49,10 +50,11 @@ function renderDetail(detail: SquawkDetail, now: Date): string {
       lines.push("No screenshot.")
    } else {
       const { width, height, source } = detail.screenshot
-      lines.push(
-         `Screenshot: ${width}×${height} (${source}). Download with: ` +
-            `squawk screenshot ${displayRef(detail.siteKey, detail.number)}`
-      )
+      const where =
+         screenshotPath === undefined
+            ? `Download with: squawk screenshot ${displayRef(detail.siteKey, detail.number)}`
+            : `Saved to ${screenshotPath}`
+      lines.push(`Screenshot: ${width}×${height} (${source}). ${where}`)
    }
    return lines.join("\n")
 }

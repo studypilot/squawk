@@ -17,7 +17,7 @@ import {
    type ListSquawksResponse,
    type MeResponse,
    type SquawkDetail,
-   type SquawkStatus,
+   type SquawkTargetStatus,
    type Token
 } from "@squawk/shared"
 import { CliError, LOGIN_HINT, NotLoggedInError } from "./errors"
@@ -32,6 +32,9 @@ export class ApiError extends CliError {
       super(message)
    }
 }
+
+/** The server could not be reached at all; worth retrying. */
+export class NetworkError extends CliError {}
 
 export interface ListSquawksParameters {
    site: string
@@ -83,7 +86,7 @@ export class ApiClient {
       return this.requestUnchecked("POST", `/api/squawks/${ref}/comments`, { body: { body } })
    }
 
-   setStatus(ref: string, status: SquawkStatus): Promise<unknown> {
+   setStatus(ref: string, status: SquawkTargetStatus): Promise<unknown> {
       return this.requestUnchecked("PATCH", `/api/squawks/${ref}`, { body: { status } })
    }
 
@@ -172,7 +175,7 @@ export class ApiClient {
             body: options.body === undefined ? undefined : JSON.stringify(options.body)
          })
       } catch (error) {
-         throw new CliError(`Could not reach ${this.server}: ${describeError(error)}`)
+         throw new NetworkError(`Could not reach ${this.server}: ${describeError(error)}`)
       }
       if (response.ok) return response
       throw await toApiError(response, this.server)

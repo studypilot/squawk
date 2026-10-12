@@ -44,9 +44,15 @@ export function renderTable(headers: string[], rows: string[][]): string {
    return [renderRow(headers), ...rows.map(renderRow)].join("\n")
 }
 
+/** `Jan`, `Agent for Jan` (Jan's CLI wrote it), or `Claude (agent)` for an agent token. */
 export function authorLabel(author: Author): string {
    if (author.kind === "agent") return `${author.name} (agent)`
+   if (author.agent !== null) return `Agent for ${firstName(author.name) ?? author.email}`
    return author.name ?? author.email
+}
+
+function firstName(name: string | null): string | undefined {
+   return name?.trim().split(/\s+/)[0] || undefined
 }
 
 /** Lower-case file-name-safe version of a site key: `feat/Login` becomes `feat-login`. */

@@ -103,7 +103,14 @@ export const jan: UserAuthor = {
    id: "11111111-1111-4111-8111-111111111111",
    email: "jan@studypilot.app",
    name: "Jan",
-   avatarUrl: null
+   avatarUrl: null,
+   agent: null
+}
+
+/** Jan's CLI login token writing on Jan's behalf. */
+export const janAgent: UserAuthor = {
+   ...jan,
+   agent: { tokenId: "77777777-7777-4777-8777-777777777777", name: "CLI test-host" }
 }
 
 const squawkId = "22222222-2222-4222-8222-222222222222"
@@ -157,6 +164,9 @@ export function squawkFixture(overrides: Partial<SquawkDetail> = {}): SquawkDeta
       author: jan,
       commentCount: 1,
       createdAt: "2026-10-10T10:00:00.000Z",
+      submittedAt: "2026-10-10T10:00:00.000Z",
+      lastActivityAt: "2026-10-10T11:00:00.000Z",
+      lastAuthor: jan,
       resolvedAt: null,
       resolvedBy: null,
       comments: [

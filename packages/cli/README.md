@@ -54,6 +54,7 @@ together with `--site`. Quote `<site>#<n>` in zsh: `'feat/login#3'`.
 | `reply REF (TEXT \| --file PATH \| -)`                                            | `squawk reply 'feat/login#3' "Fixed in a1b2c3d."`                                    |
 | `resolve REF [--comment TEXT]`                                                    | `squawk resolve 'feat/login#3' --comment "Fixed in a1b2c3d."`                        |
 | `reopen REF`                                                                      | `squawk reopen 'feat/login#3'`                                                       |
+| `watch [--site KEY] [--timeout S] [--interval S] [--out DIR]`                     | `squawk watch --site feat/login --json --out /tmp/squawk`                            |
 | `token create --name NAME [--site KEY] [--expires-days N]`                        | `squawk token create --name "Claude feat/login" --site feat/login --expires-days 14` |
 | `token list`                                                                      | `squawk token list`                                                                  |
 | `token revoke ID`                                                                 | `squawk token revoke 6f1c...`                                                        |
@@ -71,6 +72,11 @@ Notes:
 - `resolve --comment` posts the comment first and only resolves if that succeeded.
 - `token create` prints the secret exactly once. Only humans can create and revoke tokens; agent
   tokens cannot.
+- `list` and `show` print replies an agent wrote through a CLI login as `Agent for <first name>`,
+  not as the person; agent tokens appear as `<token name> (agent)`. Drafts are private to their
+  author and never listed by the CLI.
+- `watch` waits until at least one open squawk needs attention, then prints all of them and exits.
+  See [Waiting for squawks](#waiting-for-squawks).
 - `site-key` prints the current git branch as a site key (characters outside
   `A-Z a-z 0-9 . _ : / @ -` become `-`), so a build that embeds Squawk with the branch name and an
   agent working on that branch agree on the key.
@@ -93,6 +99,33 @@ without `SQUAWK_TOKEN` runs unauthenticated.
 | 0    | Success                                               |
 | 1    | Error (message on stderr)                             |
 | 2    | Not logged in, or the server rejected the token (401) |
+| 3    | `watch` timed out without anything to do              |
+
+## Waiting for squawks
+
+`squawk watch` is the loop primitive for agents. It polls the open squawks of a site every
+`--interval` seconds (default 10) and returns as soon as at least one needs attention: it is open
+and the newest comment was not written by the caller as an agent (a new squawk, or a human
+answered). Then it fetches every such squawk with its thread, saves the screenshots to `--out`
+(default `/tmp/squawk`) as `<site>-<n>.png`, prints them all in one go and exits 0.
+
+- `--site` defaults to the site key of the current git branch (see `site-key`).
+- `--timeout` (default 540 seconds, `0` waits forever) ends the wait with exit code 3 and one line
+  on stderr. Start `watch` again in that case.
+- Network errors and server failures while polling are reported on stderr and retried until the
+  timeout. A rejected token still exits 2.
+- Nothing is written to stdout while waiting, so `--json` output is always a single document:
+  `{ site, checkedAt, me, items: [ { ...squawk detail, screenshotPath } ] }`. Without `--json`
+  each squawk is printed like `show`, with the saved screenshot path, separated by lines.
+- A squawk you only asked a question on stays open but does not come back until someone answers.
+
+```bash
+squawk watch --site feat/login --json --out /tmp/squawk > /tmp/squawk-next.json
+case $? in
+   0) jq -r '.items[] | "#\(.number) \(.screenshotPath)"' /tmp/squawk-next.json ;;
+   3) echo "nothing new, watch again" ;;
+esac
+```
 
 ## Scripting with `--json`
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { authorLabel, firstLine, relativeTime, renderTable, siteSlug, truncate } from "./format"
-import { jan } from "./test-harness"
+import { jan, janAgent } from "./test-harness"
 
 describe("format", () => {
    it("truncates with an ellipsis only when needed", () => {
@@ -41,6 +41,9 @@ describe("format", () => {
       expect(
          authorLabel({ kind: "agent", id: "66666666-6666-4666-8666-666666666666", name: "Claude" })
       ).toBe("Claude (agent)")
+      expect(authorLabel(janAgent)).toBe("Agent for Jan")
+      expect(authorLabel({ ...janAgent, name: "Moritz Example" })).toBe("Agent for Moritz")
+      expect(authorLabel({ ...janAgent, name: null })).toBe("Agent for jan@studypilot.app")
    })
 
    it("slugs site keys for file names", () => {

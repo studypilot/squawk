@@ -9,6 +9,7 @@ import { siteKeyCommand } from "./commands/site-key"
 import { sitesCommand } from "./commands/sites"
 import { reopenCommand, resolveCommand } from "./commands/status"
 import { tokenCreateCommand, tokenListCommand, tokenRevokeCommand } from "./commands/tokens"
+import { watchCommand } from "./commands/watch"
 import { whoamiCommand } from "./commands/whoami"
 import type { CliContext, CommandContext } from "./context"
 import { CliError } from "./errors"
@@ -137,6 +138,19 @@ export function createProgram(context: CliContext): Command {
       .addOption(siteOption)
       .action(withContext(reopenCommand))
 
+   program
+      .command("watch")
+      .description(
+         "wait until open squawks need attention (new, or a human answered), then print all of " +
+            "them with screenshots saved and exit 0; exit 3 on timeout. For agents: run in the " +
+            "background and start again after handling the result"
+      )
+      .option("--site <key>", "site key (default: the current git branch, see site-key)")
+      .option("--timeout <seconds>", "give up after this long, 0 = never", parseTimeout, 540)
+      .option("--interval <seconds>", "seconds between polls", parseInterval, 10)
+      .option("--out <dir>", "directory for the screenshots", "/tmp/squawk")
+      .action(withContext(watchCommand))
+
    const token = program.command("token").description("manage agent tokens (humans only)")
    token
       .command("create")
@@ -165,6 +179,14 @@ export function createProgram(context: CliContext): Command {
 
 function parseLimit(value: string): number {
    return parseIntegerInRange(value, 1, 200)
+}
+
+function parseTimeout(value: string): number {
+   return parseIntegerInRange(value, 0, 86_400)
+}
+
+function parseInterval(value: string): number {
+   return parseIntegerInRange(value, 1, 3600)
 }
 
 function parseExpiresDays(value: string): number {

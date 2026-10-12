@@ -8,6 +8,7 @@ import {
    errorResponse,
    type Harness,
    jan,
+   janAgent,
    jsonResponse,
    recordedRequest,
    SERVER,
@@ -198,7 +199,16 @@ describe("squawk CLI", () => {
       it("validates --limit and --status before calling the server", async () => {
          expect(await harness.run("list", "--site", "s", "--limit", "0")).toBe(1)
          expect(await harness.run("list", "--site", "s", "--status", "closed")).toBe(1)
+         expect(await harness.run("list", "--site", "s", "--status", "draft")).toBe(1)
          expect(harness.fetchMock).not.toHaveBeenCalled()
+      })
+
+      it("marks squawks an agent wrote on someone's behalf", async () => {
+         harness.fetchMock.mockResolvedValueOnce(
+            jsonResponse({ items: [squawkFixture({ author: janAgent })], nextCursor: null })
+         )
+         expect(await harness.run("list", "--site", "feat/login")).toBe(0)
+         expect(harness.stdout()).toContain("Agent for Jan")
       })
    })
 
@@ -218,6 +228,18 @@ describe("squawk CLI", () => {
          expect(output).toContain("    Only on small screens.")
          expect(output.match(/The save button overlaps the footer\./g)).toHaveLength(1)
          expect(output).toContain("squawk screenshot 'feat/login#3'")
+      })
+
+      it("shows agent replies as the agent, not the user", async () => {
+         const detail = squawkFixture({
+            comments: [squawkFixture().comments[0]!].map(comment => ({
+               ...comment,
+               author: janAgent
+            }))
+         })
+         harness.fetchMock.mockResolvedValueOnce(jsonResponse(detail))
+         expect(await harness.run("show", "feat/login#3")).toBe(0)
+         expect(harness.stdout()).toContain("  Agent for Jan, 1h ago")
       })
 
       it("prints the raw API object with --json", async () => {

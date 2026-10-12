@@ -44,6 +44,33 @@ thread is a _squawk_, numbered per site (`feat/login#3`). The `squawk` CLI reads
 Finish with a summary for the user: which squawks you resolved (with SHAs), which you asked about,
 and which you skipped and why.
 
+## Waiting for squawks (agents)
+
+When the user wants you to stay on a preview and handle squawks as they come in, loop on
+`squawk watch` instead of polling `list` yourself:
+
+1. Start `squawk watch --site KEY --json --out /tmp/squawk` in the background. In Claude Code:
+   the Bash tool with `run_in_background: true` and a timeout of at least `600000` ms; the
+   command finishing wakes you up. `watch` gives up by itself after 540 s.
+2. **Exit 3** means nothing arrived. Start the same `watch` again right away.
+3. **Exit 0** means stdout is one JSON document whose `items` hold _all_ squawks that need
+   attention right now, each a full `show` object plus `screenshotPath`. Handle all of them in this
+   round: look at every screenshot (Read `screenshotPath`), find the code, fix, verify, commit,
+   then `reply` or `resolve` each one (steps 4 to 8 of the workflow above). Only then start
+   `watch` again.
+4. **Exit 2** means not logged in: stop and ask the user, as everywhere else.
+
+Rules for the loop:
+
+- A squawk you only asked a question on stays open. `watch` does not return it again until a
+  human answers (it looks at who wrote last), so asking is safe and does not loop.
+- Several squawks about the same spot: fix them together in one change, then answer each one
+  individually.
+- Never run `watch` in a tight loop without handling its result; exit 0 always means work to do.
+- Your replies through a CLI login show up in the inbox and overlay as "Agent for <Name>", not as
+  the user, so reviewers can tell your answers from the user's own. Agent tokens
+  (`SQUAWK_TOKEN`) show the token name instead.
+
 ## Rules
 
 - Never resolve a squawk without a verified fix. A question or a "won't fix" proposal is a reply,
@@ -67,7 +94,8 @@ squawk screenshot 'KEY#N' --out /tmp/squawk-N.png  # then Read the PNG
 squawk reply 'KEY#N' "Fixed: ... (abc1234)"        # reply; or --file PATH, or - for stdin
 squawk resolve 'KEY#N' --comment "Fixed: ... (abc1234)"  # reply and resolve in one go
 squawk reopen 'KEY#N'                              # undo a resolve
+squawk watch --site KEY --json --out /tmp/squawk   # wait for squawks; 0 = items, 3 = timeout
 ```
 
 `#N` with `--site KEY` works everywhere a reference is expected: `squawk show '#3' --site KEY`.
-Exit codes: 0 ok, 1 error, 2 not logged in.
+Exit codes: 0 ok, 1 error, 2 not logged in, 3 `watch` timed out (start it again).
