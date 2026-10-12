@@ -81,6 +81,8 @@ export const siteSchema = z.object({
    displayName: z.string().nullable(),
    openCount: z.number().int().nonnegative(),
    resolvedCount: z.number().int().nonnegative(),
+   /** Squawks of the site that are unread for the caller; always 0 for agent tokens. */
+   unreadCount: z.number().int().nonnegative(),
    lastActivityAt: z.string().datetime().nullable(),
    createdAt: z.string().datetime()
 })
@@ -204,8 +206,8 @@ export const listSquawksQuerySchema = z.object({
     * the caller's own drafts.
     */
    status: z.enum(["open", "resolved", "all", "draft"]).default("open"),
-   /** Only squawks that are unread for the caller. */
-   unread: z.coerce.boolean().optional(),
+   /** `true`: only squawks that are unread for the caller. `false` (`"false"`) means no filter. */
+   unread: z.stringbool().optional(),
    cursor: z.string().optional(),
    limit: z.coerce.number().int().min(1).max(200).default(LIMITS.listPageSize)
 })

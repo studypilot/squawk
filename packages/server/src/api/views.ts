@@ -9,6 +9,7 @@ import type {
    UserAuthor
 } from "@squawk/shared"
 import { asc, count, desc, eq, inArray } from "drizzle-orm"
+import type { Principal } from "../auth/principal"
 import type { Database } from "../db/index"
 import {
    comments,
@@ -21,6 +22,7 @@ import {
    type TokenRow,
    type UserRow
 } from "../db/schema"
+import { findUnreadIds } from "./read-state"
 
 export type SquawkWithSite = SquawkRow & { siteKey: string }
 
@@ -109,12 +111,14 @@ async function loadAuthors(
 }
 
 /**
- * Turns squawk rows into API objects with first comment, latest activity, author, counts and
- * screenshot. A fixed number of queries regardless of how many rows are passed.
+ * Turns squawk rows into API objects with first comment, latest activity, author, counts,
+ * screenshot, work claim and the read state of `viewer`. A fixed number of queries regardless of
+ * how many rows are passed.
  */
 export async function loadSquawkViews(
    database: Database,
-   rows: SquawkWithSite[]
+   rows: SquawkWithSite[],
+   viewer: Principal
 ): Promise<Squawk[]> {
    if (rows.length === 0) return []
    const squawkIds = rows.map(row => row.id)
@@ -143,10 +147,12 @@ export async function loadSquawkViews(
       .select()
       .from(screenshots)
       .where(inArray(screenshots.squawkId, squawkIds))
+   const unreadIds = await findUnreadIds(database, viewer, squawkIds)
    const resolveAuthor = await loadAuthors(database, [
       ...rows.flatMap(row => [
          { userId: row.authorUserId, tokenId: row.authorTokenId },
-         { userId: row.resolvedByUserId, tokenId: row.resolvedByTokenId }
+         { userId: row.resolvedByUserId, tokenId: row.resolvedByTokenId },
+         { userId: row.workingUserId, tokenId: row.workingTokenId }
       ]),
       ...lastComments.map(comment => ({
          userId: comment.authorUserId,
@@ -184,6 +190,14 @@ export async function loadSquawkViews(
                ? { userId: lastComment.authorUserId, tokenId: lastComment.authorTokenId }
                : author
          ),
+         unread: unreadIds.has(row.id),
+         working:
+            row.workingSince === null
+               ? null
+               : {
+                    by: resolveAuthor({ userId: row.workingUserId, tokenId: row.workingTokenId }),
+                    since: toIsoString(row.workingSince)
+                 },
          resolvedAt: toIsoString(row.resolvedAt),
          resolvedBy: isResolvedByAnyone
             ? resolveAuthor({ userId: row.resolvedByUserId, tokenId: row.resolvedByTokenId })
@@ -194,9 +208,10 @@ export async function loadSquawkViews(
 
 export async function loadSquawkDetail(
    database: Database,
-   row: SquawkWithSite
+   row: SquawkWithSite,
+   viewer: Principal
 ): Promise<SquawkDetail> {
-   const [squawk] = await loadSquawkViews(database, [row])
+   const [squawk] = await loadSquawkViews(database, [row], viewer)
    if (!squawk) throw new Error("Squawk view could not be built")
    const commentRows = await database
       .select()

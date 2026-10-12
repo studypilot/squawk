@@ -42,7 +42,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnv> {
       "/api/*",
       cors({
          origin: origin => origin || null,
-         allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+         allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allowHeaders: ["Authorization", "Content-Type"],
          maxAge: 3600,
          credentials: false

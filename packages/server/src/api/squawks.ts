@@ -11,6 +11,7 @@ import {
    type CreateSquawkInput,
    type ListSquawksQuery,
    type ListSquawksResponse,
+   type SquawkTargetStatus,
    type SubmitSquawksResponse
 } from "@squawk/shared"
 import {
@@ -49,6 +50,16 @@ import {
 import { readJsonBody } from "../http/json"
 import { isUuid } from "../uuid"
 import {
+   afterWrite,
+   canClaim,
+   claim,
+   clearClaim,
+   markRead,
+   markUnread,
+   readerUserId,
+   unreadCondition
+} from "./read-state"
+import {
    loadCommentViews,
    loadSquawkDetail,
    loadSquawkViews,
@@ -71,6 +82,7 @@ squawkRoutes.get("/", async c => {
       query.site ? eq(sites.key, query.site) : undefined,
       principal.siteRestriction ? eq(sites.key, principal.siteRestriction) : undefined,
       query.page ? eq(squawks.page, query.page) : undefined,
+      query.unread ? unreadFilter(principal) : undefined,
       query.cursor ? olderThanCursor(query.cursor) : undefined
    ]
    const rows = await selectSquawks(database)
@@ -81,15 +93,15 @@ squawkRoutes.get("/", async c => {
    const pageRows = rows.slice(0, query.limit)
    const lastRow = pageRows.at(-1)
    const response: ListSquawksResponse = {
-      items: await loadSquawkViews(database, pageRows),
+      items: await loadSquawkViews(database, pageRows, principal),
       nextCursor: rows.length > query.limit && lastRow ? encodeCursor(lastRow) : null
    }
    return c.json(response)
 })
 
 squawkRoutes.get("/:ref", async c => {
-   const { squawk } = await findVisibleSquawk(c)
-   return c.json(await loadSquawkDetail(c.var.dependencies.database, squawk))
+   const { principal, squawk } = await findVisibleSquawk(c)
+   return c.json(await loadSquawkDetail(c.var.dependencies.database, squawk, principal))
 })
 
 squawkRoutes.post("/", async c => {
@@ -157,9 +169,11 @@ squawkRoutes.post("/", async c => {
                ...input.screenshot
             })
          }
+         await afterWrite(transaction, principal, [created.id], { releasesClaim: false })
          return created.id
       })
-      return c.json(await loadSquawkDetail(database, await findSquawk(database, squawkId)), 201)
+      const created = await findSquawk(database, squawkId)
+      return c.json(await loadSquawkDetail(database, created, principal), 201)
    } catch (error) {
       if (screenshot) await unlink(absolutePath).catch(() => {})
       throw error
@@ -187,12 +201,13 @@ squawkRoutes.post("/submit", async c => {
          .returning({ id: squawks.id })
       // Throwing rolls the transaction back, so either every draft is submitted or none.
       if (submitted.length !== ids.length) throw notFound("Not all of these are your drafts")
+      await afterWrite(transaction, principal, ids, { releasesClaim: false })
    })
 
    const rows = await selectSquawks(database).where(inArray(squawks.id, ids))
    const rowsInRequestOrder = ids.flatMap(id => rows.filter(row => row.id === id))
    const response: SubmitSquawksResponse = {
-      items: await loadSquawkViews(database, rowsInRequestOrder)
+      items: await loadSquawkViews(database, rowsInRequestOrder, principal)
    }
    return c.json(response)
 })
@@ -203,11 +218,15 @@ squawkRoutes.post("/:ref/comments", async c => {
    const input = parseInput(createCommentInputSchema, await readJsonBody(c))
    if (squawk.status === "draft") throw conflict("Drafts have no replies; edit the draft instead")
 
-   const [comment] = await database
-      .insert(comments)
-      .values({ squawkId: squawk.id, body: input.body, ...authorColumns(principal) })
-      .returning()
-   if (!comment) throw new Error("Comment insert returned no row")
+   const comment = await database.transaction(async transaction => {
+      const [inserted] = await transaction
+         .insert(comments)
+         .values({ squawkId: squawk.id, body: input.body, ...authorColumns(principal) })
+         .returning()
+      if (!inserted) throw new Error("Comment insert returned no row")
+      await afterWrite(transaction, principal, [squawk.id], { releasesClaim: true })
+      return inserted
+   })
    const [view] = await loadCommentViews(database, [comment])
    return c.json(view, 201)
 })
@@ -224,22 +243,15 @@ squawkRoutes.patch("/:ref", async c => {
       if (input.body !== undefined) await updateFirstCommentBody(database, squawk.id, input.body)
    } else if (input.body !== undefined) {
       throw conflict("Only drafts can be edited")
-   } else if (input.status !== undefined && input.status !== squawk.status) {
-      const author = authorColumns(principal)
-      const resolution =
-         input.status === "resolved"
-            ? {
-                 resolvedAt: new Date(),
-                 resolvedByUserId: author.authorUserId,
-                 resolvedByTokenId: author.authorTokenId
-              }
-            : { resolvedAt: null, resolvedByUserId: null, resolvedByTokenId: null }
-      await database
-         .update(squawks)
-         .set({ status: input.status, ...resolution })
-         .where(eq(squawks.id, squawk.id))
+   } else if (input.status !== undefined) {
+      const status = input.status
+      await database.transaction(async transaction => {
+         if (status !== squawk.status) await updateStatus(transaction, principal, squawk.id, status)
+         await afterWrite(transaction, principal, [squawk.id], { releasesClaim: true })
+      })
    }
-   return c.json(await loadSquawkDetail(database, await findSquawk(database, squawk.id)))
+   const updated = await findSquawk(database, squawk.id)
+   return c.json(await loadSquawkDetail(database, updated, principal))
 })
 
 squawkRoutes.delete("/:ref", async c => {
@@ -256,6 +268,66 @@ squawkRoutes.delete("/:ref", async c => {
    if (screenshot) await unlink(path.join(config.dataDir, screenshot.path)).catch(() => {})
    return c.body(null, 204)
 })
+
+/** Read state of the calling user. Agent tokens have none, so nothing is unread for them. */
+squawkRoutes.put("/:ref/read", async c => {
+   const { principal, squawk } = await findVisibleSquawk(c)
+   const userId = readerUserId(principal)
+   if (userId !== null) await markRead(c.var.dependencies.database, userId, [squawk.id])
+   return c.body(null, 204)
+})
+
+squawkRoutes.delete("/:ref/read", async c => {
+   const { principal, squawk } = await findVisibleSquawk(c)
+   const userId = readerUserId(principal)
+   if (userId !== null) await markUnread(c.var.dependencies.database, userId, squawk.id)
+   return c.body(null, 204)
+})
+
+/** Claims the squawk for the calling agent; a claim by someone else is replaced. */
+squawkRoutes.put("/:ref/working", async c => {
+   const { principal, squawk } = await findVisibleSquawk(c)
+   if (!canClaim(principal)) {
+      throw forbidden("Only agents claim squawks: use an agent token or the CLI login")
+   }
+   if (squawk.status === "draft") throw conflict("Drafts cannot be worked on")
+   await claim(c.var.dependencies.database, principal, squawk.id)
+   return c.body(null, 204)
+})
+
+/** Anyone who can see the squawk may clear a claim, e.g. one an agent forgot. */
+squawkRoutes.delete("/:ref/working", async c => {
+   const { squawk } = await findVisibleSquawk(c)
+   if (squawk.status === "draft") throw conflict("Drafts cannot be worked on")
+   await clearClaim(c.var.dependencies.database, squawk.id)
+   return c.body(null, 204)
+})
+
+async function updateStatus(
+   database: Database,
+   principal: Principal,
+   squawkId: string,
+   status: SquawkTargetStatus
+): Promise<void> {
+   const author = authorColumns(principal)
+   const resolution =
+      status === "resolved"
+         ? {
+              resolvedAt: new Date(),
+              resolvedByUserId: author.authorUserId,
+              resolvedByTokenId: author.authorTokenId
+           }
+         : { resolvedAt: null, resolvedByUserId: null, resolvedByTokenId: null }
+   await database
+      .update(squawks)
+      .set({ status, ...resolution })
+      .where(eq(squawks.id, squawkId))
+}
+
+function unreadFilter(principal: Principal): SQL {
+   const userId = readerUserId(principal)
+   return userId === null ? sql`false` : unreadCondition(userId)
+}
 
 /** `open`, `resolved` and `all` never include drafts; `draft` lists the caller's own only. */
 function statusCondition(status: ListSquawksQuery["status"], principal: Principal): SQL {

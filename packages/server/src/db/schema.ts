@@ -6,6 +6,7 @@ import {
    jsonb,
    pgEnum,
    pgTable,
+   primaryKey,
    real,
    text,
    timestamp,
@@ -101,7 +102,14 @@ export const squawks = pgTable(
       submittedAt: timestampColumn("submitted_at"),
       resolvedAt: timestampColumn("resolved_at"),
       resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
-      resolvedByTokenId: uuid("resolved_by_token_id").references(() => tokens.id)
+      resolvedByTokenId: uuid("resolved_by_token_id").references(() => tokens.id),
+      /**
+       * The agent working on the squawk right now: an agent token, or a user together with the
+       * CLI login token their agent uses (like the author columns). All three null when unclaimed.
+       */
+      workingUserId: uuid("working_user_id").references(() => users.id),
+      workingTokenId: uuid("working_token_id").references(() => tokens.id),
+      workingSince: timestampColumn("working_since")
    },
    table => [
       index("squawks_site_status_created_index").on(table.siteId, table.status, table.createdAt),
@@ -117,8 +125,31 @@ export const squawks = pgTable(
       check(
          "squawks_submitted_unless_draft",
          sql`(status in ('open', 'resolved')) = (submitted_at is not null)`
+      ),
+      check(
+         "squawks_working_claimant",
+         sql`(working_user_id is null and working_token_id is null and working_since is null) or (working_since is not null and num_nonnulls(working_user_id, working_token_id) >= 1)`
       )
    ]
+)
+
+/**
+ * When a user last looked at a squawk. Activity (a comment, the body included) after `read_at`
+ * makes the squawk unread for them; no row means everything is unread. Microsecond precision like
+ * `comments.created_at`, so a comment and the read mark written in one transaction compare equal.
+ */
+export const squawkReads = pgTable(
+   "squawk_reads",
+   {
+      squawkId: uuid("squawk_id")
+         .notNull()
+         .references(() => squawks.id, { onDelete: "cascade" }),
+      userId: uuid("user_id")
+         .notNull()
+         .references(() => users.id, { onDelete: "cascade" }),
+      readAt: timestamp("read_at", { withTimezone: true, mode: "date" }).notNull()
+   },
+   table => [primaryKey({ columns: [table.squawkId, table.userId] })]
 )
 
 export const comments = pgTable(

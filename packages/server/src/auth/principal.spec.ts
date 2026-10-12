@@ -243,7 +243,7 @@ describe("CORS", () => {
          "https://preview.example.com"
       )
       expect(preflight.headers.get("access-control-allow-methods")).toBe(
-         "GET,POST,PATCH,DELETE,OPTIONS"
+         "GET,POST,PUT,PATCH,DELETE,OPTIONS"
       )
       expect(preflight.headers.get("access-control-allow-headers")).toBe(
          "Authorization,Content-Type"
