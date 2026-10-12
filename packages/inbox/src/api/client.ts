@@ -1,4 +1,6 @@
 import {
+   connectInfoResponseSchema,
+   connectResponseSchema,
    createTokenResponseSchema,
    deviceInfoResponseSchema,
    errorResponseSchema,
@@ -9,6 +11,8 @@ import {
    squawkDetailSchema
 } from "@squawk/shared"
 import type {
+   ConnectInfoResponse,
+   ConnectResponse,
    createTokenInputSchema,
    CreateTokenResponse,
    ListSquawksResponse,
@@ -189,6 +193,19 @@ export function getDeviceInfo(userCode: string): Promise<DeviceInfo> {
 
 export async function decideDevice(userCode: string, decision: "approve" | "deny"): Promise<void> {
    await send("POST", `/api/auth/device/${decision}`, { userCode })
+}
+
+export function getConnectInfo(origin: string): Promise<ConnectInfoResponse> {
+   const parameters = new URLSearchParams({ origin })
+   return sendAndParse(
+      connectInfoResponseSchema,
+      "GET",
+      `/api/auth/connect?${parameters.toString()}`
+   )
+}
+
+export function connectOrigin(origin: string, label: string): Promise<ConnectResponse> {
+   return sendAndParse(connectResponseSchema, "POST", "/api/auth/connect", { origin, label })
 }
 
 export async function logout(): Promise<void> {

@@ -1,4 +1,5 @@
-import { overlayStorageKey } from "@squawk/shared"
+import { CONNECT_MESSAGE_TYPE, overlayStorageKey } from "@squawk/shared"
+import type { ConnectMessage } from "@squawk/shared"
 import { ApiError } from "./api"
 import type { ApiClient } from "./api"
 
@@ -28,6 +29,10 @@ export type DeviceLoginState =
    | { status: "denied" }
    | { status: "expired" }
    | { status: "error"; message: string }
+
+/** Device-code states plus the popup login's own: waiting for the window, cancelled, closed. */
+export type LoginState =
+   DeviceLoginState | { status: "popup" } | { status: "cancelled" } | { status: "closed" }
 
 export interface DeviceLoginOptions {
    api: Pick<ApiClient, "startDeviceLogin" | "pollDeviceLogin">
@@ -109,6 +114,92 @@ export function runDeviceLogin(options: DeviceLoginOptions): () => void {
       cancelled = true
       clearTimeout(timer)
    }
+}
+
+export interface PopupLoginOptions {
+   serverOrigin: string
+   /** Origin of the page the overlay runs on; the popup posts the token to exactly this origin. */
+   pageOrigin: string
+   onState: (state: LoginState) => void
+   onToken: (token: string) => void
+   /** `window.open`, injectable for tests. */
+   openWindow?: (url: string, features: string) => Window | null
+}
+
+const POPUP_WIDTH = 480
+const POPUP_HEIGHT = 640
+const POPUP_NAME = "squawk-connect"
+const POPUP_CLOSED_POLL_MS = 500
+
+/**
+ * Signs in through a popup on the server's `/connect` page, which reuses the browser session
+ * there and posts a login token back. Must run synchronously inside a click handler so browsers
+ * allow the window. Returns a function that stops waiting and closes the popup, or null when the
+ * popup was blocked and the caller should fall back to the device-code login.
+ */
+export function runPopupLogin(options: PopupLoginOptions): (() => void) | null {
+   const { serverOrigin, pageOrigin, onState, onToken } = options
+   const openWindow =
+      options.openWindow ?? ((url, features) => window.open(url, POPUP_NAME, features))
+   const url = `${serverOrigin}/connect?origin=${encodeURIComponent(pageOrigin)}`
+   const popup = openWindow(url, popupFeatures())
+   if (!popup) return null
+
+   let done = false
+   let closedPolls = 0
+
+   const stop = (): void => {
+      done = true
+      window.removeEventListener("message", onMessage)
+      clearInterval(closedTimer)
+   }
+
+   function onMessage(event: MessageEvent): void {
+      if (done || event.origin !== serverOrigin || event.source !== popup) return
+      const data: unknown = event.data
+      if (!isConnectMessage(data)) return
+      stop()
+      if (data.status === "ok") {
+         onToken(data.token)
+         onState({ status: "approved" })
+         return
+      }
+      onState({ status: "cancelled" })
+   }
+
+   // The popup posts its message right before closing; one extra poll lets that message arrive
+   // before a closed window counts as abandoned.
+   const closedTimer = setInterval(() => {
+      if (!popup.closed) return
+      closedPolls += 1
+      if (closedPolls < 2) return
+      stop()
+      onState({ status: "closed" })
+   }, POPUP_CLOSED_POLL_MS)
+
+   window.addEventListener("message", onMessage)
+   onState({ status: "popup" })
+
+   return () => {
+      if (done) return
+      stop()
+      popup.close()
+   }
+}
+
+/** Centered over the current window. */
+function popupFeatures(): string {
+   const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - POPUP_WIDTH) / 2))
+   const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - POPUP_HEIGHT) / 2))
+   return `popup=yes,width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top}`
+}
+
+function isConnectMessage(data: unknown): data is ConnectMessage {
+   if (typeof data !== "object" || data === null) return false
+   const message = data as { type?: unknown; status?: unknown; token?: unknown }
+   if (message.type !== CONNECT_MESSAGE_TYPE) return false
+   if (message.status === "cancelled") return true
+   return message.status === "ok" && typeof message.token === "string" && message.token !== ""
 }
 
 function describe(error: unknown): string {

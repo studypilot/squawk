@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { parseOriginPattern } from "./auth/connect"
 
 const logLevelSchema = z.enum(["debug", "info", "warn", "error", "silent"])
 export type LogLevel = z.infer<typeof logLevelSchema>
@@ -23,6 +24,8 @@ export interface Config {
    logLevel: LogLevel
    /** Development bypass: requests without credentials act as this user. Never in production. */
    devUserEmail: string | null
+   /** Page origins whose popup login skips the consent card, e.g. `https://*.example.com`. */
+   trustedOriginPatterns: string[]
 }
 
 /** Treats empty strings like unset variables, which is what `.env` files usually mean. */
@@ -53,7 +56,8 @@ const environmentSchema = z.object({
    SQUAWK_DEV_USER: z.preprocess(
       value => (value === "" ? undefined : value),
       z.email("SQUAWK_DEV_USER must be an email address").optional()
-   )
+   ),
+   SQUAWK_TRUSTED_ORIGINS: optionalString
 })
 
 /** Reads and validates the configuration. Throws with a readable message on invalid input. */
@@ -76,8 +80,23 @@ export function loadConfig(environment: NodeJS.ProcessEnv): Config {
       dataDir: values.DATA_DIR,
       port: values.PORT,
       logLevel: values.LOG_LEVEL,
-      devUserEmail: values.SQUAWK_DEV_USER?.toLowerCase() ?? null
+      devUserEmail: values.SQUAWK_DEV_USER?.toLowerCase() ?? null,
+      trustedOriginPatterns: readTrustedOriginPatterns(values.SQUAWK_TRUSTED_ORIGINS)
    }
+}
+
+function readTrustedOriginPatterns(value: string | undefined): string[] {
+   const patterns = (value ?? "")
+      .split(",")
+      .map(pattern => pattern.trim().toLowerCase())
+      .filter(pattern => pattern.length > 0)
+   const invalid = patterns.find(pattern => parseOriginPattern(pattern) === null)
+   if (invalid !== undefined) {
+      throw new Error(
+         `SQUAWK_TRUSTED_ORIGINS: "${invalid}" is not an origin pattern like https://*.example.com`
+      )
+   }
+   return patterns
 }
 
 function readOidcConfig(values: z.infer<typeof environmentSchema>): OidcConfig | null {

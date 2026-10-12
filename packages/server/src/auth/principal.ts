@@ -43,11 +43,14 @@ export async function getUserPrincipal(
    return principal
 }
 
-/** A signed-in browser session (or the dev user), as required for approving device logins. */
+/**
+ * A signed-in browser session (or the dev user), as required for approving device logins and
+ * for the popup login. Tokens of either kind get 403.
+ */
 export async function getSessionUser(c: Context<AppEnv>): Promise<UserRow> {
    const principal = await getPrincipal(c)
    if (principal.kind !== "user" || principal.viaToken) {
-      throw forbidden("Approve device logins from the browser while signed in")
+      throw forbidden("Do this from the browser while signed in, not with a token")
    }
    return principal.user
 }

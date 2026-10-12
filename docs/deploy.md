@@ -24,20 +24,21 @@ docker build -f deploy/Dockerfile -t squawk .
 
 ## Environment variables
 
-| Variable                     | Required  | Default                       | Meaning                                                                                                                                                                                            |
-| ---------------------------- | --------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`               | yes       |                               | Postgres connection string, e.g. `postgres://squawk:secret@db:5432/squawk`.                                                                                                                        |
-| `PUBLIC_URL`                 | yes       |                               | URL users reach Squawk at, e.g. `https://squawk.example.com`. Used for the OIDC redirect URI and device-login links. Cookies are `Secure` when it starts with `https://`.                          |
-| `SESSION_SECRET`             | yes       |                               | At least 32 characters. Signs session cookies (HS256). Generate with `openssl rand -base64 48`. Changing it signs everyone out.                                                                    |
-| `OIDC_ISSUER`                | no        | `https://accounts.google.com` | OpenID Connect issuer; discovery runs on the first sign-in.                                                                                                                                        |
-| `OIDC_CLIENT_ID`             | no        |                               | OAuth client id. Without client id and secret, browser sign-in is disabled and `/auth/login` answers 503.                                                                                          |
-| `OIDC_CLIENT_SECRET`         | no        |                               | OAuth client secret. Set both or neither.                                                                                                                                                          |
-| `OIDC_ALLOWED_EMAIL_DOMAINS` | with OIDC |                               | Comma-separated email domains that may sign in, e.g. `example.com,example.org`. This is the only access control: every signed-in user of these domains can use Squawk.                             |
-| `OIDC_HOSTED_DOMAIN`         | no        |                               | Google Workspace domain. Sends `hd` with the sign-in request and requires the `hd` claim to match.                                                                                                 |
-| `DATA_DIR`                   | no        | `/data`                       | Screenshot storage. Must be writable by the server (user `node`, uid 1000, in the image).                                                                                                          |
-| `PORT`                       | no        | `3000`                        | HTTP port inside the container.                                                                                                                                                                    |
-| `LOG_LEVEL`                  | no        | `info`                        | `debug`, `info`, `warn`, `error` or `silent`. Logs are JSON lines on stdout.                                                                                                                       |
-| `SQUAWK_DEV_USER`            | no        |                               | Development only: requests without credentials act as this email address. The server refuses to start when this is set together with `NODE_ENV=production` (the image sets `NODE_ENV=production`). |
+| Variable                     | Required  | Default                       | Meaning                                                                                                                                                                                                                                                                         |
+| ---------------------------- | --------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`               | yes       |                               | Postgres connection string, e.g. `postgres://squawk:secret@db:5432/squawk`.                                                                                                                                                                                                     |
+| `PUBLIC_URL`                 | yes       |                               | URL users reach Squawk at, e.g. `https://squawk.example.com`. Used for the OIDC redirect URI and device-login links. Cookies are `Secure` when it starts with `https://`.                                                                                                       |
+| `SESSION_SECRET`             | yes       |                               | At least 32 characters. Signs session cookies (HS256). Generate with `openssl rand -base64 48`. Changing it signs everyone out.                                                                                                                                                 |
+| `OIDC_ISSUER`                | no        | `https://accounts.google.com` | OpenID Connect issuer; discovery runs on the first sign-in.                                                                                                                                                                                                                     |
+| `OIDC_CLIENT_ID`             | no        |                               | OAuth client id. Without client id and secret, browser sign-in is disabled and `/auth/login` answers 503.                                                                                                                                                                       |
+| `OIDC_CLIENT_SECRET`         | no        |                               | OAuth client secret. Set both or neither.                                                                                                                                                                                                                                       |
+| `OIDC_ALLOWED_EMAIL_DOMAINS` | with OIDC |                               | Comma-separated email domains that may sign in, e.g. `example.com,example.org`. This is the only access control: every signed-in user of these domains can use Squawk.                                                                                                          |
+| `OIDC_HOSTED_DOMAIN`         | no        |                               | Google Workspace domain. Sends `hd` with the sign-in request and requires the `hd` claim to match.                                                                                                                                                                              |
+| `DATA_DIR`                   | no        | `/data`                       | Screenshot storage. Must be writable by the server (user `node`, uid 1000, in the image).                                                                                                                                                                                       |
+| `PORT`                       | no        | `3000`                        | HTTP port inside the container.                                                                                                                                                                                                                                                 |
+| `LOG_LEVEL`                  | no        | `info`                        | `debug`, `info`, `warn`, `error` or `silent`. Logs are JSON lines on stdout.                                                                                                                                                                                                    |
+| `SQUAWK_DEV_USER`            | no        |                               | Development only: requests without credentials act as this email address. The server refuses to start when this is set together with `NODE_ENV=production` (the image sets `NODE_ENV=production`).                                                                              |
+| `SQUAWK_TRUSTED_ORIGINS`     | no        |                               | Comma-separated page origins whose overlay popup sign-in skips the consent card, e.g. `https://*.preview.example.com,http://localhost:*`. Format `scheme://host[:port]`; `*` matches part of one host label (never a dot) or any port. Other origins see an "Allow" card first. |
 
 ## Volume
 
@@ -60,9 +61,13 @@ Any other OpenID Connect provider works the same way: set `OIDC_ISSUER` to its i
 register the same redirect URI. The provider must return an `email` claim for the scopes
 `openid email profile`; addresses marked `email_verified: false` are refused.
 
-Overlays and the CLI never use the browser session. They sign in through the device-code flow:
-the user confirms a code on `<PUBLIC_URL>/device` and the client receives a 30-day token, which is
-listed and revocable on the inbox token page.
+Overlays and the CLI never use the browser session directly; they hold a 30-day login token,
+listed and revocable on the inbox token page. The overlay gets it through a popup: "Sign in" opens
+`<PUBLIC_URL>/connect`, which uses the browser session there (signing in first if needed), asks
+for consent on a "Connect this site" card unless the page origin matches `SQUAWK_TRUSTED_ORIGINS`,
+and hands the token to the page that opened it. When the browser blocks the popup, or with "Use a
+code instead" (embedded web views), the overlay falls back to the device-code flow the CLI uses:
+the user confirms a code on `<PUBLIC_URL>/device`.
 
 ## Health check
 

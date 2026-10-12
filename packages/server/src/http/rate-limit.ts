@@ -1,3 +1,7 @@
+import { getConnInfo } from "@hono/node-server/conninfo"
+import type { Context } from "hono"
+import type { AppEnv } from "../context"
+
 /** In-memory fixed-window counter. Enough for a single replica. */
 export interface RateLimiter {
    /** Counts one attempt for the key; false once the key exceeded its limit in this window. */
@@ -18,5 +22,17 @@ export function createRateLimiter(limit: number, windowMs: number): RateLimiter 
          windows.set(key, window)
          return window.count <= limit
       }
+   }
+}
+
+/** The first `X-Forwarded-For` entry behind the reverse proxy, else the socket's peer address. */
+export function clientAddress(c: Context<AppEnv>): string {
+   const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+   if (forwarded) return forwarded
+   try {
+      return getConnInfo(c).remote.address ?? "unknown"
+   } catch {
+      // No Node socket behind this request (tests call the app directly).
+      return "unknown"
    }
 }

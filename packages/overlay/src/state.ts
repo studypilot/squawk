@@ -1,5 +1,5 @@
 import type { Squawk, SquawkDetail, SquawkMeta } from "@squawk/shared"
-import type { DeviceLoginState } from "./auth"
+import type { LoginState } from "./auth"
 
 export type Listener<State> = (state: State, previous: State) => void
 
@@ -43,8 +43,8 @@ export interface OverlayState {
    threadId: string | null
    /** Loaded detail of `threadId`; null while loading. */
    thread: SquawkDetail | null
-   /** Progress of a running device-code sign-in. */
-   login: DeviceLoginState | null
+   /** Progress of a running sign-in, through the popup or with a device code. */
+   login: LoginState | null
    filter: ListFilter
    mode: Mode
    extensionAvailable: boolean

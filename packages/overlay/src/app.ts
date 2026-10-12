@@ -10,7 +10,7 @@ import type {
 import { captureAnchor } from "./anchor/capture"
 import { resolveAnchor } from "./anchor/resolve"
 import { ApiError, createApiClient } from "./api"
-import { readToken, runDeviceLogin, writeToken } from "./auth"
+import { readToken, runDeviceLogin, runPopupLogin, writeToken } from "./auth"
 import {
    buildSquawkLink,
    derivePageKey,
@@ -138,6 +138,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       openThread,
       showList: () => store.set({ panel: "list", threadId: null, thread: null }),
       signIn,
+      signInWithCode,
       cancelSignIn,
       reply,
       setStatus,
@@ -319,20 +320,36 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    // ---- sign-in ----------------------------------------------------------------------------
 
    let stopLogin: (() => void) | null = null
+
+   function acceptToken(token: string): void {
+      writeToken(config.serverOrigin, token)
+      currentUser = null
+      store.set({ token, login: null })
+      refreshNow()
+      if (pendingThreadId) openThread(pendingThreadId)
+      pendingThreadId = null
+   }
+
+   /** Popup on the server first; it must open within the click. Blocked popups use a code. */
    function signIn(): void {
+      stopLogin?.()
+      stopLogin = runPopupLogin({
+         serverOrigin: config.serverOrigin,
+         pageOrigin: location.origin,
+         onState: login => store.set({ login }),
+         onToken: acceptToken
+      })
+      if (!stopLogin) signInWithCode()
+   }
+
+   /** Device-code login, also for embedded web views where popups never open. */
+   function signInWithCode(): void {
       stopLogin?.()
       stopLogin = runDeviceLogin({
          api,
          label: location.origin,
          onState: login => store.set({ login }),
-         onToken(token) {
-            writeToken(config.serverOrigin, token)
-            currentUser = null
-            store.set({ token, login: null })
-            refreshNow()
-            if (pendingThreadId) openThread(pendingThreadId)
-            pendingThreadId = null
-         }
+         onToken: acceptToken
       })
    }
 

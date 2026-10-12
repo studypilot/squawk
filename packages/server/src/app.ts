@@ -10,6 +10,7 @@ import { screenshotRoutes } from "./api/screenshots"
 import { siteRoutes } from "./api/sites"
 import { squawkRoutes } from "./api/squawks"
 import { tokenRoutes } from "./api/tokens"
+import { createConnectRoutes } from "./auth/connect"
 import { createDeviceRoutes } from "./auth/device"
 import { createOidcRoutes } from "./auth/oidc"
 import type { AppDependencies, AppEnv } from "./context"
@@ -59,6 +60,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnv> {
    })
 
    app.route("/api/auth/device", createDeviceRoutes())
+   app.route("/api/auth/connect", createConnectRoutes())
    app.route("/api/me", meRoutes)
    app.route("/api/sites", siteRoutes)
    app.route("/api/squawks", squawkRoutes)

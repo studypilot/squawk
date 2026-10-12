@@ -58,6 +58,7 @@ export async function createTestContext(overrides: Partial<Config> = {}): Promis
       port: 0,
       logLevel: "silent",
       devUserEmail: null,
+      trustedOriginPatterns: [],
       ...overrides
    }
    const app = createApp({ config, database, logger: createLogger("silent"), publicDir })

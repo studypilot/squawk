@@ -35,3 +35,6 @@ export const SQUAWK_LINK_FRAGMENT_KEY = "squawk"
 export function overlayStorageKey(serverOrigin: string): string {
    return `squawk:${serverOrigin}:token`
 }
+
+/** `type` of the messages the `/connect` popup posts to the overlay window that opened it. */
+export const CONNECT_MESSAGE_TYPE = "squawk:connect"

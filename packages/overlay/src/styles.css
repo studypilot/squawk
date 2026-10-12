@@ -1247,6 +1247,28 @@ textarea:focus {
    min-width: 160px;
 }
 
+.sign-in .text-button {
+   padding: 2px 4px;
+   border: 0;
+   border-radius: var(--sq-radius-sm);
+   background: none;
+   color: var(--sq-text-2);
+   font-size: 12px;
+   cursor: pointer;
+   transition: color var(--sq-ease);
+}
+
+.sign-in .text-button:hover {
+   color: var(--sq-text);
+   text-decoration: underline;
+   text-underline-offset: 2px;
+}
+
+.sign-in .text-button:focus-visible {
+   outline: 2px solid var(--sq-primary-soft);
+   outline-offset: 1px;
+}
+
 .user-code {
    position: relative;
    padding: 10px 16px;

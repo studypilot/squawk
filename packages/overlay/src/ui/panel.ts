@@ -1,6 +1,6 @@
 import { LIMITS } from "@squawk/shared"
 import type { Author, Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
-import type { DeviceLoginState } from "../auth"
+import type { LoginState } from "../auth"
 import type { ListFilter, OverlayState } from "../state"
 import { copyText } from "./clipboard"
 import { autoGrow, avatar, h, icon, planeMark } from "./dom"
@@ -14,6 +14,7 @@ export interface PanelHandlers {
    openThread(squawkId: string): void
    showList(): void
    signIn(): void
+   signInWithCode(): void
    cancelSignIn(): void
    reply(squawkId: string, body: string): Promise<void>
    setStatus(squawkId: string, status: SquawkStatus): Promise<void>
@@ -178,12 +179,19 @@ function iconButton(name: IconName, label: string, onclick: () => void): HTMLBut
 
 // ---- sign-in -------------------------------------------------------------------------------
 
-function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HTMLElement {
-   const signInButton = h(
-      "button",
-      { class: "button primary", type: "button", onclick: () => handlers.signIn() },
-      [login ? "Try again" : "Sign in"]
-   )
+function signInView(login: LoginState | null, handlers: PanelHandlers): HTMLElement {
+   const signInButton = (onclick: () => void): HTMLElement =>
+      h("button", { class: "button primary", type: "button", onclick }, [
+         login ? "Try again" : "Sign in"
+      ])
+   const textButton = (label: string, onclick: () => void): HTMLElement =>
+      h("button", { class: "text-button", type: "button", onclick }, [label])
+   const useCode = (): HTMLElement =>
+      textButton("Use a code instead", () => handlers.signInWithCode())
+   const cancel = (): HTMLElement => textButton("Cancel", () => handlers.cancelSignIn())
+   const retryWithPopup = (): HTMLElement => signInButton(() => handlers.signIn())
+   const retryWithCode = (): HTMLElement => signInButton(() => handlers.signInWithCode())
+
    const view = h("div", { class: "sign-in" }, [
       planeMark(28),
       h("div", { class: "title" }, ["Sign in to Squawk"])
@@ -191,11 +199,32 @@ function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HT
    if (!login) {
       view.append(
          h("p", { class: "muted" }, ["See and add squawks on this page with your team account."]),
-         signInButton
+         retryWithPopup(),
+         useCode()
       )
       return view
    }
    switch (login.status) {
+      case "popup":
+         view.append(
+            h("p", { class: "waiting" }, ["Finish signing in in the window that just opened."]),
+            cancel()
+         )
+         break
+      case "cancelled":
+         view.append(
+            h("p", { class: "muted" }, ["Sign-in cancelled."]),
+            retryWithPopup(),
+            useCode()
+         )
+         break
+      case "closed":
+         view.append(
+            h("p", { class: "muted" }, ["The sign-in window was closed."]),
+            retryWithPopup(),
+            useCode()
+         )
+         break
       case "starting":
          view.append(h("p", { class: "waiting" }, ["Requesting a sign-in code…"]))
          break
@@ -225,13 +254,13 @@ function signInView(login: DeviceLoginState | null, handlers: PanelHandlers): HT
          view.append(h("p", { class: "muted" }, ["Signed in."]))
          break
       case "denied":
-         view.append(h("p", { class: "muted" }, ["The sign-in was denied."]), signInButton)
+         view.append(h("p", { class: "muted" }, ["The sign-in was denied."]), retryWithCode())
          break
       case "expired":
-         view.append(h("p", { class: "muted" }, ["The code expired."]), signInButton)
+         view.append(h("p", { class: "muted" }, ["The code expired."]), retryWithCode())
          break
       case "error":
-         view.append(h("p", { class: "error" }, [login.message]), signInButton)
+         view.append(h("p", { class: "error" }, [login.message]), retryWithCode())
          break
    }
    return view

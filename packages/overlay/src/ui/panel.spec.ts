@@ -13,6 +13,7 @@ function handlers(): PanelHandlers {
       openThread: vi.fn(),
       showList: vi.fn(),
       signIn: vi.fn(),
+      signInWithCode: vi.fn(),
       cancelSignIn: vi.fn(),
       reply: vi.fn(async () => undefined),
       setStatus: vi.fn(async () => undefined),

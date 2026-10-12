@@ -1140,6 +1140,32 @@ tr:hover .inline-edit-trigger,
    color: var(--sq-success-text);
 }
 
+/* Popup login (/connect) */
+
+.connect-page {
+   align-items: center;
+   display: flex;
+   justify-content: center;
+   min-height: 100vh;
+   min-height: 100dvh;
+   padding: 24px 16px;
+}
+
+.connect-page .device-card {
+   margin: 0;
+   width: 100%;
+}
+
+.connect-origin {
+   color: var(--sq-text);
+   overflow-wrap: anywhere;
+}
+
+.connect-note {
+   font-size: 12px;
+   text-align: center;
+}
+
 /* Signed-out */
 
 .auth-card {

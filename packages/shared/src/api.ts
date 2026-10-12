@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { anchorSchema } from "./anchor"
 import { LIMITS } from "./constants"
+import type { CONNECT_MESSAGE_TYPE } from "./constants"
 
 /*
  * The HTTP contract between squawk-server and its three clients (overlay, inbox, CLI).
@@ -293,6 +294,57 @@ export const deviceInfoResponseSchema = z.object({
 
 /** POST /api/auth/device/approve and /deny — cookie auth. */
 export const deviceDecisionInputSchema = z.object({ userCode: z.string() })
+
+// ---------------------------------------------------------------------------------------------
+// Popup login (overlay)
+// ---------------------------------------------------------------------------------------------
+
+/** Longest page origin the popup login accepts. */
+export const CONNECT_ORIGIN_MAX_LENGTH = 300
+
+/** True for an absolute http(s) origin exactly as `location.origin` reports it. */
+export function isWebOrigin(value: string): boolean {
+   if (value.length > CONNECT_ORIGIN_MAX_LENGTH) return false
+   try {
+      const url = new URL(value)
+      return (url.protocol === "http:" || url.protocol === "https:") && url.origin === value
+   } catch {
+      return false
+   }
+}
+
+const connectOriginSchema = z
+   .string()
+   .refine(isWebOrigin, "origin must be an absolute http(s) origin such as https://example.com")
+
+/** GET /api/auth/connect?origin= — browser session only; whether the popup may skip consent. */
+export const connectInfoQuerySchema = z.object({ origin: connectOriginSchema })
+
+export const connectInfoResponseSchema = z.object({
+   origin: z.string(),
+   /** The origin matches `SQUAWK_TRUSTED_ORIGINS`; the popup signs in without asking. */
+   trusted: z.boolean()
+})
+export type ConnectInfoResponse = z.infer<typeof connectInfoResponseSchema>
+
+/** POST /api/auth/connect — browser session only; issues a login token for the page origin. */
+export const connectInputSchema = z.object({
+   origin: connectOriginSchema,
+   /** Token name; defaults to `Overlay on <hostname>` and is cut to the token name limit. */
+   label: z.string().trim().max(CONNECT_ORIGIN_MAX_LENGTH).optional()
+})
+export type ConnectInput = z.infer<typeof connectInputSchema>
+
+export const connectResponseSchema = z.object({
+   token: z.string(),
+   user: userAuthorSchema
+})
+export type ConnectResponse = z.infer<typeof connectResponseSchema>
+
+/** What the popup posts to its opener, with the page origin as the target origin. */
+export type ConnectMessage =
+   | { type: typeof CONNECT_MESSAGE_TYPE; status: "ok"; token: string }
+   | { type: typeof CONNECT_MESSAGE_TYPE; status: "cancelled" }
 
 // ---------------------------------------------------------------------------------------------
 // Errors

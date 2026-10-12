@@ -7,6 +7,7 @@ import { EmptyState } from "./components/empty-state"
 import { AlertIcon } from "./components/icons"
 import { Layout } from "./components/layout"
 import { ToastProvider } from "./components/toast"
+import { ConnectPage } from "./pages/connect"
 import { DevicePage } from "./pages/device"
 import { SitePage } from "./pages/site"
 import { SitesPage } from "./pages/sites"
@@ -41,6 +42,8 @@ function RouteErrorPage() {
 }
 
 export const routes: RouteObject[] = [
+   // The overlay's sign-in popup: no navigation, and its own redirect to sign in.
+   { path: "/connect", element: <ConnectPage />, errorElement: <RouteErrorPage /> },
    {
       path: "/",
       element: <Layout />,

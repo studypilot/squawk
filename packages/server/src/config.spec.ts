@@ -17,8 +17,25 @@ describe("loadConfig", () => {
          port: 3000,
          logLevel: "info",
          oidc: null,
-         devUserEmail: null
+         devUserEmail: null,
+         trustedOriginPatterns: []
       })
+   })
+
+   it("reads trusted origin patterns and refuses malformed ones", () => {
+      const config = loadConfig({
+         ...baseEnvironment,
+         SQUAWK_TRUSTED_ORIGINS: " https://*.Preview.example.com, http://localhost:* ,"
+      })
+      expect(config.trustedOriginPatterns).toEqual([
+         "https://*.preview.example.com",
+         "http://localhost:*"
+      ])
+      for (const value of ["*.example.com", "https://example.com/path", "ftp://example.com"]) {
+         expect(() => loadConfig({ ...baseEnvironment, SQUAWK_TRUSTED_ORIGINS: value })).toThrow(
+            /SQUAWK_TRUSTED_ORIGINS/
+         )
+      }
    })
 
    it("reads the OIDC settings", () => {
@@ -65,6 +82,9 @@ describe("loadConfig", () => {
 describe("safeReturnPath", () => {
    it("only allows same-origin paths", () => {
       expect(safeReturnPath("/device?code=ABCD-EFGH")).toBe("/device?code=ABCD-EFGH")
+      expect(safeReturnPath("/connect?origin=https%3A%2F%2Fpreview.example.com")).toBe(
+         "/connect?origin=https%3A%2F%2Fpreview.example.com"
+      )
       expect(safeReturnPath("https://evil.example.com")).toBe("/")
       expect(safeReturnPath("//evil.example.com")).toBe("/")
       expect(safeReturnPath("/\\evil.example.com")).toBe("/")

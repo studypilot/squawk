@@ -2,26 +2,24 @@ import { randomBytes } from "node:crypto"
 import {
    DEVICE_CODE_POLL_INTERVAL_SECONDS,
    DEVICE_CODE_TTL_SECONDS,
-   LOGIN_TOKEN_TTL_DAYS,
    deviceDecisionInputSchema,
    devicePollInputSchema,
    deviceStartInputSchema,
    type DevicePollResponse,
    type DeviceStartResponse
 } from "@squawk/shared"
-import { getConnInfo } from "@hono/node-server/conninfo"
 import { and, count, eq, gt, lt } from "drizzle-orm"
-import { Hono, type Context } from "hono"
+import { Hono } from "hono"
 import { toIsoString, toUserAuthor } from "../api/views"
 import type { AppEnv } from "../context"
 import type { Database } from "../db/index"
 import { deviceCodes, users } from "../db/schema"
 import { ApiError, notFound, parseInput } from "../http/errors"
 import { readJsonBody } from "../http/json"
-import { createRateLimiter } from "../http/rate-limit"
+import { clientAddress, createRateLimiter } from "../http/rate-limit"
 import { getSessionUser } from "./principal"
 import { randomBase62, sha256Hex } from "./secrets"
-import { insertToken } from "./tokens"
+import { insertLoginToken } from "./tokens"
 
 const userCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const DEVICE_STARTS_PER_ADDRESS_PER_MINUTE = 5
@@ -140,18 +138,6 @@ export function createDeviceRoutes(): Hono<AppEnv> {
    return routes
 }
 
-/** The first `X-Forwarded-For` entry behind the reverse proxy, else the socket's peer address. */
-function clientAddress(c: Context<AppEnv>): string {
-   const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
-   if (forwarded) return forwarded
-   try {
-      return getConnInfo(c).remote.address ?? "unknown"
-   } catch {
-      // No Node socket behind this request (tests call the app directly).
-      return "unknown"
-   }
-}
-
 /**
  * Deletes the approved code and creates the login token in one transaction, so a token is
  * issued exactly once even if two polls race.
@@ -171,14 +157,11 @@ async function issueLoginToken(
       if (!user) return { status: "expired" }
 
       const kindLabel = claimed.kind === "overlay" ? "Overlay" : "CLI"
-      const expiresAt = new Date(Date.now() + LOGIN_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000)
-      const { secret } = await insertToken(transaction, {
-         name: `${kindLabel} ${claimed.label}`,
-         kind: "login",
-         siteId: null,
-         createdBy: user,
-         expiresAt
-      })
+      const { secret, expiresAt } = await insertLoginToken(
+         transaction,
+         user,
+         `${kindLabel} ${claimed.label}`
+      )
       return {
          status: "approved",
          token: secret,
