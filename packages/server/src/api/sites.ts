@@ -36,12 +36,15 @@ siteRoutes.patch("/:key", async c => {
    return c.json(site)
 })
 
-/** Sites with squawk counts, most recently active first. Activity is a comment or a resolution. */
+/**
+ * Sites with squawk counts, most recently active first. Activity is a comment or a resolution.
+ * Drafts are private, so they count neither as squawks nor as activity.
+ */
 async function listSites(database: Database, onlyKey: string | null): Promise<Site[]> {
    const lastCommentAt = sql`(
       select max(${comments.createdAt}) from ${comments}
       inner join ${squawks} on ${squawks.id} = ${comments.squawkId}
-      where ${squawks.siteId} = ${sites.id}
+      where ${squawks.siteId} = ${sites.id} and ${squawks.status} <> 'draft'
    )`
    const lastActivityAt = sql<Date | null>`greatest(${lastCommentAt}, max(${squawks.resolvedAt}))`
       .mapWith(sites.createdAt)

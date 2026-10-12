@@ -32,10 +32,11 @@ function idColumn() {
       .default(sql`gen_random_uuid()`)
 }
 
-export const squawkStatusEnum = pgEnum("squawk_status", ["open", "resolved"])
+export const squawkStatusEnum = pgEnum("squawk_status", ["open", "resolved", "draft"])
 export const screenshotSourceEnum = pgEnum("screenshot_source", ["extension", "dom"])
 export const tokenKindEnum = pgEnum("token_kind", ["login", "agent"])
 export const deviceKindEnum = pgEnum("device_kind", ["overlay", "cli"])
+export const tokenClientEnum = pgEnum("token_client", ["overlay", "cli"])
 export const deviceStatusEnum = pgEnum("device_status", ["pending", "approved", "denied"])
 
 export const users = pgTable("users", {
@@ -55,8 +56,10 @@ export const sites = pgTable("sites", {
 })
 
 /**
- * Login tokens come from the device-code flow and act as the user who approved them. Agent tokens
- * are created by a user with a name and act as an agent of that name.
+ * Login tokens come from the device-code flow or the popup login and act as the user who approved
+ * them; `client` says which client they were issued to. Writes through a `cli` login token are
+ * attributed to the user and the token together ("agent on behalf of"). Agent tokens are created
+ * by a user with a name and act as an agent of that name; their `client` is null.
  */
 export const tokens = pgTable(
    "tokens",
@@ -64,6 +67,7 @@ export const tokens = pgTable(
       id: idColumn(),
       name: text("name").notNull(),
       kind: tokenKindEnum("kind").notNull(),
+      client: tokenClientEnum("client"),
       prefix: text("prefix").notNull(),
       hash: text("hash").notNull(),
       siteId: uuid("site_id").references(() => sites.id, { onDelete: "cascade" }),
@@ -93,6 +97,8 @@ export const squawks = pgTable(
       authorUserId: uuid("author_user_id").references(() => users.id),
       authorTokenId: uuid("author_token_id").references(() => tokens.id),
       createdAt: createdAtColumn(),
+      /** When the squawk left `draft`; null exactly while it is a draft. */
+      submittedAt: timestampColumn("submitted_at"),
       resolvedAt: timestampColumn("resolved_at"),
       resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
       resolvedByTokenId: uuid("resolved_by_token_id").references(() => tokens.id)
@@ -100,10 +106,17 @@ export const squawks = pgTable(
    table => [
       index("squawks_site_status_created_index").on(table.siteId, table.status, table.createdAt),
       uniqueIndex("squawks_site_number_index").on(table.siteId, table.number),
-      check("squawks_one_author", sql`num_nonnulls(author_user_id, author_token_id) = 1`),
+      /** Both columns are set when a CLI login token wrote on behalf of its user. */
+      check("squawks_one_author", sql`num_nonnulls(author_user_id, author_token_id) >= 1`),
+      // Written without the literal 'draft': a new enum value cannot be used in the same
+      // transaction that adds it, and the migrator runs all pending migrations in one.
       check(
          "squawks_resolver_matches_status",
-         sql`(status = 'open' and resolved_at is null and resolved_by_user_id is null and resolved_by_token_id is null) or (status = 'resolved' and resolved_at is not null and num_nonnulls(resolved_by_user_id, resolved_by_token_id) = 1)`
+         sql`(status <> 'resolved' and resolved_at is null and resolved_by_user_id is null and resolved_by_token_id is null) or (status = 'resolved' and resolved_at is not null and num_nonnulls(resolved_by_user_id, resolved_by_token_id) >= 1)`
+      ),
+      check(
+         "squawks_submitted_unless_draft",
+         sql`(status in ('open', 'resolved')) = (submitted_at is not null)`
       )
    ]
 )
@@ -125,7 +138,7 @@ export const comments = pgTable(
    },
    table => [
       index("comments_squawk_created_index").on(table.squawkId, table.createdAt),
-      check("comments_one_author", sql`num_nonnulls(author_user_id, author_token_id) = 1`)
+      check("comments_one_author", sql`num_nonnulls(author_user_id, author_token_id) >= 1`)
    ]
 )
 

@@ -30,6 +30,8 @@ export interface TestContext {
       createdBy: UserRow
       name?: string
       siteKey?: string
+      /** For login tokens: the client it was issued to. Default null, like tokens from before. */
+      client?: TokenRow["client"]
    }) => Promise<{ token: TokenRow; secret: string }>
    request: (
       method: string,
@@ -74,11 +76,12 @@ export async function createTestContext(overrides: Partial<Config> = {}): Promis
          const token = await createSessionToken(config, user)
          return { user, cookie: `${SESSION_COOKIE_NAME}=${token}` }
       },
-      async createToken({ kind, createdBy, name, siteKey }) {
+      async createToken({ kind, createdBy, name, siteKey, client }) {
          const siteId = siteKey ? await ensureSiteId(database, siteKey) : null
          return insertToken(database, {
             name: name ?? `${kind} token`,
             kind,
+            client: client ?? null,
             siteId,
             createdBy,
             expiresAt: null

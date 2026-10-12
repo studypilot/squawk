@@ -21,6 +21,10 @@ export function forbidden(message: string): ApiError {
    return new ApiError(403, "forbidden", message)
 }
 
+export function conflict(message: string): ApiError {
+   return new ApiError(409, "conflict", message)
+}
+
 export function validationError(message: string): ApiError {
    return new ApiError(400, "validation", message)
 }

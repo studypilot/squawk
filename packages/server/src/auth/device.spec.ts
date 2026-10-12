@@ -102,7 +102,7 @@ describe("device-code login", () => {
          .select()
          .from(tokens)
          .where(eq(tokens.hash, sha256Hex(approved.token)))
-      expect(stored).toMatchObject({ name: "CLI laptop.local", kind: "login" })
+      expect(stored).toMatchObject({ name: "CLI laptop.local", kind: "login", client: "cli" })
       const lifetimeDays = (stored!.expiresAt!.getTime() - Date.now()) / 86_400_000
       expect(Math.round(lifetimeDays)).toBe(30)
 

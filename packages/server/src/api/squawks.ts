@@ -6,17 +6,46 @@ import {
    createCommentInputSchema,
    createSquawkInputSchema,
    listSquawksQuerySchema,
+   submitSquawksInputSchema,
    updateSquawkInputSchema,
    type CreateSquawkInput,
-   type ListSquawksResponse
+   type ListSquawksQuery,
+   type ListSquawksResponse,
+   type SubmitSquawksResponse
 } from "@squawk/shared"
-import { and, desc, eq, getTableColumns, lt, or, sql, type SQL } from "drizzle-orm"
+import {
+   and,
+   asc,
+   desc,
+   eq,
+   getTableColumns,
+   inArray,
+   lt,
+   ne,
+   or,
+   sql,
+   type SQL
+} from "drizzle-orm"
+import type { Context } from "hono"
 import { Hono } from "hono"
-import { assertSiteAccess, authorColumns, getPrincipal } from "../auth/principal"
+import {
+   assertSiteAccess,
+   assertSquawkVisible,
+   authorColumns,
+   getPrincipal,
+   type Principal
+} from "../auth/principal"
 import type { AppEnv } from "../context"
 import type { Database } from "../db/index"
 import { comments, screenshots, sites, squawks } from "../db/schema"
-import { ApiError, notFound, parseInput, validationError } from "../http/errors"
+import {
+   ApiError,
+   conflict,
+   forbidden,
+   notFound,
+   parseInput,
+   validationError
+} from "../http/errors"
 import { readJsonBody } from "../http/json"
 import { isUuid } from "../uuid"
 import {
@@ -38,7 +67,7 @@ squawkRoutes.get("/", async c => {
    if (query.site) assertSiteAccess(principal, query.site)
 
    const conditions: (SQL | undefined)[] = [
-      query.status === "all" ? undefined : eq(squawks.status, query.status),
+      statusCondition(query.status, principal),
       query.site ? eq(sites.key, query.site) : undefined,
       principal.siteRestriction ? eq(sites.key, principal.siteRestriction) : undefined,
       query.page ? eq(squawks.page, query.page) : undefined,
@@ -59,10 +88,8 @@ squawkRoutes.get("/", async c => {
 })
 
 squawkRoutes.get("/:ref", async c => {
-   const { database } = c.var.dependencies
-   const squawk = await findSquawk(database, c.req.param("ref"))
-   assertSiteAccess(await getPrincipal(c), squawk.siteKey)
-   return c.json(await loadSquawkDetail(database, squawk))
+   const { squawk } = await findVisibleSquawk(c)
+   return c.json(await loadSquawkDetail(c.var.dependencies.database, squawk))
 })
 
 squawkRoutes.post("/", async c => {
@@ -70,6 +97,9 @@ squawkRoutes.post("/", async c => {
    const principal = await getPrincipal(c)
    const { input, screenshot } = await readSquawkUpload(c.req.raw)
    assertSiteAccess(principal, input.siteKey)
+   if (input.draft && principal.kind !== "user") {
+      throw forbidden("Agent tokens cannot create drafts")
+   }
 
    const screenshotId = randomUUID()
    const now = new Date()
@@ -106,6 +136,9 @@ squawkRoutes.post("/", async c => {
                siteId: site.id,
                page: input.page,
                number: next?.number ?? 1,
+               status: input.draft ? "draft" : "open",
+               createdAt: now,
+               submittedAt: input.draft ? null : now,
                anchor: input.anchor,
                meta: input.meta,
                ...author
@@ -133,12 +166,42 @@ squawkRoutes.post("/", async c => {
    }
 })
 
-squawkRoutes.post("/:ref/comments", async c => {
+squawkRoutes.post("/submit", async c => {
    const { database } = c.var.dependencies
    const principal = await getPrincipal(c)
-   const squawk = await findSquawk(database, c.req.param("ref"))
-   assertSiteAccess(principal, squawk.siteKey)
+   if (principal.kind !== "user") throw forbidden("Agent tokens have no drafts to submit")
+   const input = parseInput(submitSquawksInputSchema, await readJsonBody(c))
+   const ids = [...new Set(input.ids)]
+
+   await database.transaction(async transaction => {
+      const submitted = await transaction
+         .update(squawks)
+         .set({ status: "open", submittedAt: new Date() })
+         .where(
+            and(
+               inArray(squawks.id, ids),
+               eq(squawks.status, "draft"),
+               eq(squawks.authorUserId, principal.user.id)
+            )
+         )
+         .returning({ id: squawks.id })
+      // Throwing rolls the transaction back, so either every draft is submitted or none.
+      if (submitted.length !== ids.length) throw notFound("Not all of these are your drafts")
+   })
+
+   const rows = await selectSquawks(database).where(inArray(squawks.id, ids))
+   const rowsInRequestOrder = ids.flatMap(id => rows.filter(row => row.id === id))
+   const response: SubmitSquawksResponse = {
+      items: await loadSquawkViews(database, rowsInRequestOrder)
+   }
+   return c.json(response)
+})
+
+squawkRoutes.post("/:ref/comments", async c => {
+   const { database } = c.var.dependencies
+   const { principal, squawk } = await findVisibleSquawk(c)
    const input = parseInput(createCommentInputSchema, await readJsonBody(c))
+   if (squawk.status === "draft") throw conflict("Drafts have no replies; edit the draft instead")
 
    const [comment] = await database
       .insert(comments)
@@ -151,12 +214,17 @@ squawkRoutes.post("/:ref/comments", async c => {
 
 squawkRoutes.patch("/:ref", async c => {
    const { database } = c.var.dependencies
-   const principal = await getPrincipal(c)
-   const squawk = await findSquawk(database, c.req.param("ref"))
-   assertSiteAccess(principal, squawk.siteKey)
+   const { principal, squawk } = await findVisibleSquawk(c)
    const input = parseInput(updateSquawkInputSchema, await readJsonBody(c))
 
-   if (input.status !== squawk.status) {
+   if (squawk.status === "draft") {
+      if (input.status !== undefined) {
+         throw conflict("Submit the draft before resolving or reopening it")
+      }
+      if (input.body !== undefined) await updateFirstCommentBody(database, squawk.id, input.body)
+   } else if (input.body !== undefined) {
+      throw conflict("Only drafts can be edited")
+   } else if (input.status !== undefined && input.status !== squawk.status) {
       const author = authorColumns(principal)
       const resolution =
          input.status === "resolved"
@@ -173,6 +241,61 @@ squawkRoutes.patch("/:ref", async c => {
    }
    return c.json(await loadSquawkDetail(database, await findSquawk(database, squawk.id)))
 })
+
+squawkRoutes.delete("/:ref", async c => {
+   const { database, config } = c.var.dependencies
+   const { squawk } = await findVisibleSquawk(c)
+   if (squawk.status !== "draft") throw conflict("Only drafts can be deleted")
+
+   const [screenshot] = await database
+      .select({ path: screenshots.path })
+      .from(screenshots)
+      .where(eq(screenshots.squawkId, squawk.id))
+   // Comments and the screenshot row go with the squawk (on delete cascade).
+   await database.delete(squawks).where(and(eq(squawks.id, squawk.id), eq(squawks.status, "draft")))
+   if (screenshot) await unlink(path.join(config.dataDir, screenshot.path)).catch(() => {})
+   return c.body(null, 204)
+})
+
+/** `open`, `resolved` and `all` never include drafts; `draft` lists the caller's own only. */
+function statusCondition(status: ListSquawksQuery["status"], principal: Principal): SQL {
+   if (status === "all") return ne(squawks.status, "draft")
+   if (status !== "draft") return eq(squawks.status, status)
+   if (principal.kind !== "user") return sql`false`
+   return (
+      and(eq(squawks.status, "draft"), eq(squawks.authorUserId, principal.user.id)) ?? sql`false`
+   )
+}
+
+/** The squawk body is its oldest comment. */
+async function updateFirstCommentBody(
+   database: Database,
+   squawkId: string,
+   body: string
+): Promise<void> {
+   const [first] = await database
+      .select({ id: comments.id })
+      .from(comments)
+      .where(eq(comments.squawkId, squawkId))
+      .orderBy(asc(comments.createdAt), asc(comments.id))
+      .limit(1)
+   if (!first) throw new Error("Squawk has no first comment")
+   await database.update(comments).set({ body }).where(eq(comments.id, first.id))
+}
+
+/**
+ * The squawk named by the `:ref` parameter, if the caller may see it: site-restricted tokens see
+ * their site only, and drafts are visible to their author only. Anything else is a 404.
+ */
+async function findVisibleSquawk(
+   c: Context<AppEnv>
+): Promise<{ principal: Principal; squawk: SquawkWithSite }> {
+   const principal = await getPrincipal(c)
+   const squawk = await findSquawk(c.var.dependencies.database, c.req.param("ref") ?? "")
+   assertSiteAccess(principal, squawk.siteKey)
+   assertSquawkVisible(principal, squawk)
+   return { principal, squawk }
+}
 
 function selectSquawks(database: Database) {
    return database

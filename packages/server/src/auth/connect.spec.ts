@@ -107,7 +107,11 @@ describe("popup login", () => {
          .select()
          .from(tokens)
          .where(eq(tokens.hash, sha256Hex(body.token)))
-      expect(stored).toMatchObject({ name: "Overlay on pr-7.preview.test", kind: "login" })
+      expect(stored).toMatchObject({
+         name: "Overlay on pr-7.preview.test",
+         kind: "login",
+         client: "overlay"
+      })
       const lifetimeDays = (stored!.expiresAt!.getTime() - Date.now()) / 86_400_000
       expect(Math.round(lifetimeDays)).toBe(30)
 

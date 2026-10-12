@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm"
 import type { Context } from "hono"
 import type { AppEnv } from "../context"
-import { sites, tokens, users, type TokenRow, type UserRow } from "../db/schema"
+import { sites, tokens, users, type SquawkRow, type TokenRow, type UserRow } from "../db/schema"
 import { ApiError, forbidden, notFound } from "../http/errors"
 import { sha256Hex } from "./secrets"
 import { readSessionUserId } from "./session"
@@ -62,13 +62,39 @@ export function assertSiteAccess(principal: Principal, siteKey: string): void {
    }
 }
 
-/** Column values for rows written by this principal. Login tokens write as their human. */
+/** True for the caller's own drafts. Drafts belong to the user, whichever client wrote them. */
+export function isOwnDraft(
+   principal: Principal,
+   squawk: Pick<SquawkRow, "status" | "authorUserId">
+): boolean {
+   return (
+      squawk.status === "draft" &&
+      principal.kind === "user" &&
+      squawk.authorUserId === principal.user.id
+   )
+}
+
+/** Drafts exist only for their author; everyone else gets a 404 as if they did not exist. */
+export function assertSquawkVisible(
+   principal: Principal,
+   squawk: Pick<SquawkRow, "status" | "authorUserId">
+): void {
+   if (squawk.status === "draft" && !isOwnDraft(principal, squawk)) {
+      throw notFound("Squawk not found")
+   }
+}
+
+/**
+ * Column values for rows written by this principal. Login tokens write as their human; a CLI
+ * login token also records itself, which marks the row as written by the user's agent.
+ */
 export function authorColumns(principal: Principal): {
    authorUserId: string | null
    authorTokenId: string | null
 } {
-   if (principal.kind === "user") return { authorUserId: principal.user.id, authorTokenId: null }
-   return { authorUserId: null, authorTokenId: principal.token.id }
+   if (principal.kind === "agent") return { authorUserId: null, authorTokenId: principal.token.id }
+   const agentTokenId = principal.viaToken?.client === "cli" ? principal.viaToken.id : null
+   return { authorUserId: principal.user.id, authorTokenId: agentTokenId }
 }
 
 async function resolvePrincipal(c: Context<AppEnv>): Promise<Principal> {

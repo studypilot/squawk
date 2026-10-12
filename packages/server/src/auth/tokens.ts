@@ -6,6 +6,8 @@ import { createTokenSecret, sha256Hex } from "./secrets"
 interface NewToken {
    name: string
    kind: TokenRow["kind"]
+   /** Which client a login token was issued to; null for agent tokens. */
+   client?: TokenRow["client"]
    siteId: string | null
    createdBy: UserRow
    expiresAt: Date | null
@@ -22,6 +24,7 @@ export async function insertToken(
       .values({
          name: newToken.name,
          kind: newToken.kind,
+         client: newToken.client ?? null,
          prefix: secret.slice(0, TOKEN_DISPLAY_PREFIX_LENGTH),
          hash: sha256Hex(secret),
          siteId: newToken.siteId,
@@ -33,16 +36,21 @@ export async function insertToken(
    return { token, secret }
 }
 
-/** A login token for an overlay or CLI: acts as the user, all sites, `LOGIN_TOKEN_TTL_DAYS` long. */
+/**
+ * A login token for an overlay or CLI: acts as the user, all sites, `LOGIN_TOKEN_TTL_DAYS` long.
+ * Writes through a `cli` token are shown as the user's agent rather than the user.
+ */
 export async function insertLoginToken(
    database: Pick<Database, "insert">,
    user: UserRow,
-   name: string
+   name: string,
+   client: NonNullable<TokenRow["client"]>
 ): Promise<{ secret: string; expiresAt: Date }> {
    const expiresAt = new Date(Date.now() + LOGIN_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000)
    const { secret } = await insertToken(database, {
       name,
       kind: "login",
+      client,
       siteId: null,
       createdBy: user,
       expiresAt

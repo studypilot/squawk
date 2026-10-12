@@ -48,7 +48,8 @@ export function createConnectRoutes(): Hono<AppEnv> {
       const { secret } = await insertLoginToken(
          database,
          user,
-         label.slice(0, LIMITS.tokenNameMaxLength)
+         label.slice(0, LIMITS.tokenNameMaxLength),
+         "overlay"
       )
       const response: ConnectResponse = { token: secret, user: toUserAuthor(user) }
       return c.json(response)

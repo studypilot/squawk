@@ -160,7 +160,8 @@ async function issueLoginToken(
       const { secret, expiresAt } = await insertLoginToken(
          transaction,
          user,
-         `${kindLabel} ${claimed.label}`
+         `${kindLabel} ${claimed.label}`,
+         claimed.kind
       )
       return {
          status: "approved",
