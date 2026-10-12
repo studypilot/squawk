@@ -50,8 +50,8 @@ The compose files plus `.env` are all the host needs; a clone of the repository 
 
 `ghcr.io/studypilot/squawk` is built from `deploy/Dockerfile` on every push to `main` and tagged
 `latest`, `prod-<yyyy-mm-dd>.<hhmm>` (Europe/Berlin time) and the commit SHA. Pin one of the latter
-two to control upgrades. The image is currently built for `linux/arm64` only; on `x86_64` hosts
-build it yourself and change `image:` in `docker-compose.prod.yml`. From the repository root:
+two to control upgrades. The image is built for `linux/amd64` and `linux/arm64`. To build it
+yourself instead (and change `image:` in `docker-compose.prod.yml`), run from the repository root:
 
 ```bash
 docker build -f deploy/Dockerfile -t squawk .

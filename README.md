@@ -265,8 +265,8 @@ Details: [docs/agents.md](docs/agents.md) and [packages/cli/README.md](packages/
 
 ## Status
 
-Squawk is used daily at [studypilot](https://studypilot.app) to review preview builds of web and
-iPad apps. It is pre-1.0: the API and the CLI output may still change between minor versions.
+Squawk is used daily at [studypilot](https://studypilot.app) to review preview builds of its web
+apps. It is pre-1.0: the API and the CLI output may still change between minor versions.
 
 Next on the list:
 

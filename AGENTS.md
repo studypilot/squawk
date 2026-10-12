@@ -33,8 +33,6 @@ brackets, and do not guess the answers you cannot read from the repository.
      path prefix.
    - Where it runs: a Docker host or VPS with Docker Compose [default], Kubernetes, or other.
    - Does the host already run a reverse proxy with TLS? If not, use the Caddy override below.
-   - CPU architecture of the host (`uname -m`). The published image is currently `linux/arm64`
-     only; on `x86_64` you build the image on the host (see step 4 below).
    - Identity provider: Google Workspace [default] or another OpenID Connect provider (issuer URL).
    - Email domains that may sign in, e.g. `example.com`. Everyone with an address in these domains
      gets access; there is no other access control.
@@ -116,14 +114,15 @@ There are three compose files in `deploy/`:
 
 4. **Image.** `docker-compose.prod.yml` uses `ghcr.io/studypilot/squawk:latest`, which follows the
    `main` branch. To control upgrades, pin a tag instead: `ghcr.io/studypilot/squawk:<commit sha>`
-   or `:prod-<date>.<time>`. On an `x86_64` host, build the image from a clone and point the
-   compose file at it:
+   or `:prod-<date>.<time>`. The image is built for `linux/amd64` and `linux/arm64`. Only if the
+   registry is not reachable from the host, build the image from a clone and point the compose
+   file at it:
 
    ```bash
    git clone https://github.com/studypilot/squawk ~/squawk-src
    docker build -f ~/squawk-src/deploy/Dockerfile -t squawk:local ~/squawk-src
    sed -i.bak 's|image: ghcr.io/studypilot/squawk:latest|image: squawk:local|' docker-compose.prod.yml
-rm docker-compose.prod.yml.bak
+   rm docker-compose.prod.yml.bak
    ```
 
 5. **Start.**

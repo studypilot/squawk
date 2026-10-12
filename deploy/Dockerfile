@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 # Build context is the repository root: docker build -f deploy/Dockerfile .
 
-FROM node:22-alpine AS build
+# The build stage runs on the builder's own architecture; only the runtime stage below is
+# produced per target platform. Every production dependency is plain JavaScript.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /workspace
 RUN npm install --global corepack@latest && corepack enable
 
