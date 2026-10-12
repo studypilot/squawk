@@ -1,4 +1,5 @@
 import type { Author } from "@squawk/shared"
+import { authorKey, authorTooltip, isAgent } from "./format"
 
 type AttributeValue = string | number | boolean | null | undefined | ((event: Event) => void)
 type Child = Node | string | null | undefined | false
@@ -35,11 +36,15 @@ const ICONS = {
    link: '<path d="M6.5 9.5l3-3M7 11.5l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M9 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1"/>',
    image: '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 10.5l3-3 3 3 2-2 3 3"/><circle cx="10.5" cy="6" r="1" fill="currentColor" stroke="none"/>',
    info: '<circle cx="8" cy="8" r="5.5"/><path d="M8 7.5v3.5M8 5.25v.1"/>',
-   robot: '<rect x="3" y="5.5" width="10" height="7.5" rx="2"/><path d="M8 3v2.5M6.5 11h3"/><circle cx="6" cy="8.75" r=".75" fill="currentColor" stroke="none"/><circle cx="10" cy="8.75" r=".75" fill="currentColor" stroke="none"/>',
+   sparkle:
+      '<path d="M8 2.5c.4 2.7 1.8 4.1 4.5 4.5-2.7.4-4.1 1.8-4.5 4.5-.4-2.7-1.8-4.1-4.5-4.5 2.7-.4 4.1-1.8 4.5-4.5z" fill="currentColor"/><path d="M12.5 10.5v3M11 12h3"/>',
+   pencil: '<path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/>',
+   trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8.5h6l.5-8.5"/>',
    reopen: '<path d="M3 8a5 5 0 1 0 1.6-3.65M3 2.5V5h2.5"/>',
    external:
       '<path d="M9.5 2.5h4v4M13.5 2.5L8 8M11 9v3.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1H7"/>',
    expand: '<path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/>',
+   send: '<path d="M2.5 8l11-5-4 11-2-4.5z"/>',
    inbox: '<path d="M2.5 9h3l1 2h3l1-2h3M2.5 9V4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2V9M2.5 9v2.5a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V9"/>'
 } as const
 
@@ -91,14 +96,19 @@ function initialsOf(name: string): string {
    return (first.charAt(0) + last.charAt(0)).toUpperCase()
 }
 
-/** Initials on a colour derived from the name; agents get the robot glyph instead. */
+/** Initials on a colour derived from the name; agents get the sparkle in the brand colour. */
 export function avatar(author: Author, size: 20 | 24 = 24): HTMLElement {
-   const element = h("span", { class: `avatar avatar-${size}`, "aria-hidden": "true" })
-   if (author.kind === "agent") {
+   const element = h("span", {
+      class: `avatar avatar-${size}`,
+      title: authorTooltip(author),
+      "aria-hidden": "true"
+   })
+   if (isAgent(author)) {
       element.classList.add("is-agent")
-      element.append(icon("robot", size === 24 ? 14 : 12))
+      element.append(icon("sparkle", size === 24 ? 14 : 12))
       return element
    }
+   if (author.kind === "agent") return element
    const name = author.name || author.email
    if (author.avatarUrl) {
       element.append(h("img", { src: author.avatarUrl, alt: "" }))
@@ -107,6 +117,22 @@ export function avatar(author: Author, size: 20 | 24 = 24): HTMLElement {
    element.style.background = `hsl(${hueOf(name)} 55% 45%)`
    element.textContent = initialsOf(name)
    return element
+}
+
+/** Overlapping avatars of distinct authors, at most `limit`. */
+export function avatarStack(authors: Author[], limit = 2): HTMLElement {
+   const seen = new Set<string>()
+   const unique = authors.filter(author => {
+      const key = authorKey(author)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+   })
+   return h(
+      "span",
+      { class: "avatar-stack" },
+      unique.slice(0, limit).map(author => avatar(author, 24))
+   )
 }
 
 /** Grows a textarea with its content between `minLines` and `maxLines` lines. */

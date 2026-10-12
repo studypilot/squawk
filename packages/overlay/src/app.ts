@@ -1,11 +1,10 @@
 import { LIMITS } from "@squawk/shared"
 import type {
    Anchor,
-   Author,
    CreateSquawkInput,
    Squawk,
    SquawkMeta,
-   SquawkStatus
+   SquawkTargetStatus
 } from "@squawk/shared"
 import { captureAnchor } from "./anchor/capture"
 import { resolveAnchor } from "./anchor/resolve"
@@ -21,15 +20,21 @@ import {
 import { takeScreenshot } from "./screenshot"
 import type { CapturedScreenshot } from "./screenshot"
 import { createExtensionBridge } from "./screenshot/extension"
-import { createStore } from "./state"
+import { createStore, findSquawk, groupByPage } from "./state"
 import type { OverlayState } from "./state"
 import styles from "./styles.css?inline"
 import { copyText } from "./ui/clipboard"
 import { createComposer } from "./ui/composer"
+import type { Composer, SubmitMode } from "./ui/composer"
+import { plural } from "./ui/format"
 import { createLauncher } from "./ui/launcher"
 import { createPanel } from "./ui/panel"
 import { createPinMode } from "./ui/pin-mode"
 import { createPinsLayer } from "./ui/pins"
+import { isNarrowViewport } from "./ui/placement"
+import { createThreadPopover } from "./ui/popover"
+import { createThreadView } from "./ui/thread"
+import type { ThreadHandlers, ThreadView } from "./ui/thread"
 import { createToast } from "./ui/toast"
 
 export interface OverlayConfig {
@@ -58,6 +63,8 @@ const MUTATION_DEBOUNCE_MS = 250
 const LIST_PAGE_LIMIT = 200
 const LIST_MAX_PAGES = 5
 const FONT_LINK_ID = "squawk-inter"
+/** Width of the panel on wide screens; pins and the thread popover stay left of it. */
+const PANEL_WIDTH = 380
 
 export function createOverlay(config: OverlayConfig, version: string): SquawkApi {
    const store = createStore<OverlayState>({
@@ -67,6 +74,8 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       meta: config.ref ? { ref: config.ref } : {},
       token: readToken(config.serverOrigin),
       squawks: [],
+      drafts: [],
+      me: null,
       panel: "closed",
       threadId: null,
       thread: null,
@@ -81,7 +90,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       getToken: () => store.get().token,
       onUnauthorized() {
          writeToken(config.serverOrigin, null)
-         store.set({ token: null, squawks: [], thread: null, login: null })
+         store.set({ token: null, me: null, squawks: [], drafts: [], thread: null, login: null })
       }
    })
 
@@ -112,14 +121,15 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    const shadow = host.attachShadow({ mode: "open" })
    const style = document.createElement("style")
    style.textContent = styles
-   // Keystrokes in our fields must not trigger the page's shortcuts.
+   // Keystrokes in the overlay run its own shortcuts and must not trigger the page's.
+   shadow.addEventListener("keydown", event => handleShortcut(event as KeyboardEvent))
    for (const type of ["keydown", "keyup", "keypress"]) {
       shadow.addEventListener(type, event => event.stopPropagation())
    }
 
    const toast = createToast()
    const pins = createPinsLayer({
-      select: squawkId => openThread(squawkId),
+      select: squawkId => selectPin(squawkId),
       hover: squawkId => panel.setHoveredPin(squawkId),
       orphans: squawks => panel.setOrphans(squawks)
    })
@@ -135,19 +145,29 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       close: closePanel,
       startPinMode,
       setFilter: filter => store.set({ filter }),
-      openThread,
-      showList: () => store.set({ panel: "list", threadId: null, thread: null }),
+      openThread: squawkId => openThread(squawkId),
+      hoverSquawk: squawkId => pins.highlight(squawkId),
+      revealDraft: squawkId => pins.reveal(squawkId),
       signIn,
       signInWithCode,
       cancelSignIn,
+      signOut,
+      updateDraft,
+      deleteDraft,
+      submitReview
+   })
+   const popover = createThreadPopover(() => closeThread())
+   const threadHandlers: ThreadHandlers = {
+      close: () => closeThread(),
       reply,
       setStatus,
       copyLink,
       loadScreenshot: path => api.fetchScreenshot(path)
-   })
+   }
    shadow.append(
       style,
       pins.element,
+      popover.element,
       pinMode.element,
       panel.element,
       launcher.element,
@@ -157,17 +177,42 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
 
    // ---- rendering --------------------------------------------------------------------------
 
+   /** Open squawks, resolved ones while that list is shown, drafts, and the open thread. */
    function pinnedSquawks(state: OverlayState): Squawk[] {
       const showResolved = state.panel !== "closed" && state.filter === "resolved"
-      return state.squawks.filter(
-         squawk => squawk.page === state.pageKey && (squawk.status === "open" || showResolved)
+      const shown = state.squawks.filter(
+         squawk =>
+            squawk.page === state.pageKey &&
+            (squawk.status === "open" || showResolved || squawk.id === state.threadId)
       )
+      const drafts = state.drafts.filter(draft => draft.page === state.pageKey)
+      return [...shown, ...drafts]
    }
 
    let shownPins: Squawk[] = []
+   let threadView: ThreadView | null = null
+
+   /** The open thread lives in the panel or in the popover next to its pin. */
+   function renderThread(state: OverlayState): HTMLElement | null {
+      if (!state.token || !state.threadId) {
+         threadView?.dispose()
+         threadView = null
+         popover.hide()
+         return null
+      }
+      if (threadView?.squawkId !== state.threadId) {
+         threadView?.dispose()
+         threadView = createThreadView(state.threadId, threadHandlers)
+      }
+      const inPanel = state.panel === "thread"
+      threadView.update(state, inPanel ? "panel" : "popover")
+      return threadView.element
+   }
+
    function render(state: OverlayState): void {
+      const thread = renderThread(state)
       launcher.render(state)
-      panel.render(state)
+      panel.render(state, state.panel === "thread" ? thread : null)
       pins.select(state.threadId)
       pins.element.classList.toggle("is-beside-panel", state.panel !== "closed")
       const nextPins = pinnedSquawks(state)
@@ -178,9 +223,19 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          shownPins = nextPins
          pins.show(nextPins)
       }
+      if (thread && state.panel !== "thread") {
+         const threadId = state.threadId ?? ""
+         popover.show(thread, () => pins.locate(threadId), panelInset(state))
+      } else {
+         popover.hide()
+      }
    }
    store.subscribe(render)
    render(store.get())
+
+   function panelInset(state: OverlayState): number {
+      return state.panel !== "closed" && !isNarrowViewport() ? PANEL_WIDTH : 0
+   }
 
    // ---- data -------------------------------------------------------------------------------
 
@@ -202,23 +257,30 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    }
 
    let loadedSite: string | null = null
-   let currentUser: Author | null = null
 
    async function refresh(): Promise<void> {
       const { token, siteKey } = store.get()
       if (!token) return
       panel.setLoaded(loadedSite === siteKey)
       try {
-         const squawks = await fetchSiteSquawks(siteKey)
+         const [squawks, drafts, me] = await Promise.all([
+            fetchSiteSquawks(siteKey),
+            api.listSquawks({ site: siteKey, status: "draft", limit: LIST_PAGE_LIMIT }),
+            // The account footer can wait; a failing /me must not hide the list.
+            store.get().me ? Promise.resolve(store.get().me) : api.me().catch(() => null)
+         ])
          if (store.get().siteKey !== siteKey || store.get().token !== token) return
-         // Keep unchanged items identical so the pins and the list do not re-render needlessly.
-         const previous = new Map(store.get().squawks.map(squawk => [squawk.id, squawk]))
-         store.set({ squawks: squawks.map(squawk => sameOrNew(previous.get(squawk.id), squawk)) })
+         const current = store.get()
+         // Unchanged lists keep their identity so the pins and the list do not re-render.
+         store.set({
+            squawks: mergeList(current.squawks, squawks),
+            drafts: mergeList(current.drafts, drafts.items),
+            me
+         })
          loadedSite = siteKey
          panel.setLoaded(true)
-         const { panel: view, threadId } = store.get()
-         if (view === "thread" && threadId) await loadThread(threadId)
-         if (!currentUser) currentUser = (await api.me()).principal
+         const { threadId } = store.get()
+         if (threadId) await loadThread(threadId)
       } catch {
          // Polling stays quiet; a 401 already switched the panel to sign-in.
       }
@@ -235,7 +297,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          if (!(error instanceof ApiError) || error.code !== "not_found") throw error
          if (store.get().threadId !== squawkId) return
          toast.show("This squawk no longer exists")
-         store.set({ panel: "list", threadId: null, thread: null })
+         closeThread()
       }
    }
 
@@ -267,8 +329,29 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    }
 
    function closePanel(): void {
-      store.set({ panel: "closed", threadId: null, thread: null })
+      const { panel: view } = store.get()
+      // A thread shown in the panel closes with it; a popover thread stays next to its pin.
+      if (view === "thread") store.set({ panel: "closed", threadId: null, thread: null })
+      else store.set({ panel: "closed" })
       schedulePoll()
+   }
+
+   function closeThread(): void {
+      const { panel: view, threadId } = store.get()
+      if (!threadId) return
+      store.set({ panel: view === "thread" ? "list" : view, threadId: null, thread: null })
+   }
+
+   /**
+    * Next to the pin when the squawk is pinned on this page and there is room; in the panel for
+    * other pages, lost anchors and phones.
+    */
+   function placeInPopover(squawkId: string): boolean {
+      const state = store.get()
+      if (isNarrowViewport()) return false
+      const squawk = findSquawk(state, squawkId)
+      if (!squawk?.anchor || squawk.page !== state.pageKey) return false
+      return resolveAnchor(squawk.anchor) !== null
    }
 
    let pendingThreadId: string | null = null
@@ -279,18 +362,49 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
          openPanel()
          return
       }
-      store.set({ panel: "thread", threadId: squawkId, thread: null })
-      loadThread(squawkId).then(
-         () => scrollToPin(squawkId),
-         () => toast.show("Could not load the squawk")
-      )
+      if (store.get().threadId === squawkId && store.get().thread) {
+         if (store.get().panel !== "thread") pins.reveal(squawkId)
+         return
+      }
+      const inPopover = placeInPopover(squawkId)
+      const { panel: view } = store.get()
+      store.set({
+         panel: inPopover ? (view === "thread" ? "list" : view) : "thread",
+         threadId: squawkId,
+         thread: null
+      })
+      if (inPopover) pins.reveal(squawkId)
+      loadThread(squawkId).catch(() => toast.show("Could not load the squawk"))
       schedulePoll()
    }
 
-   function scrollToPin(squawkId: string): void {
-      const { thread, pageKey } = store.get()
-      if (thread?.id !== squawkId || !thread.anchor || thread.page !== pageKey) return
-      resolveAnchor(thread.anchor)?.element.scrollIntoView({ block: "center", behavior: "smooth" })
+   /** A pin click toggles its thread; draft pins open their editor in the review. */
+   function selectPin(squawkId: string): void {
+      const state = store.get()
+      if (state.drafts.some(draft => draft.id === squawkId)) {
+         if (state.threadId) closeThread()
+         openPanel()
+         panel.editDraft(squawkId)
+         return
+      }
+      if (state.threadId === squawkId && state.panel !== "thread") return closeThread()
+      openThread(squawkId)
+   }
+
+   /** `j`/`k`: the next or previous squawk in list order, wrapping around. */
+   function stepThread(direction: 1 | -1): void {
+      const state = store.get()
+      const order = groupByPage(state).flatMap(([, squawks]) => squawks)
+      if (order.length === 0) return
+      const index = order.findIndex(squawk => squawk.id === state.threadId)
+      const nextIndex =
+         index === -1
+            ? direction === 1
+               ? 0
+               : order.length - 1
+            : (index + direction + order.length) % order.length
+      const next = order[nextIndex]
+      if (next) openThread(next.id)
    }
 
    async function reply(squawkId: string, body: string): Promise<void> {
@@ -299,13 +413,44 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       void refresh()
    }
 
-   async function setStatus(squawkId: string, status: SquawkStatus): Promise<void> {
-      const updated = await api.setStatus(squawkId, status)
+   function replaceSquawk(updated: Squawk): void {
       store.set({
          squawks: store.get().squawks.map(squawk => (squawk.id === updated.id ? updated : squawk))
       })
-      await loadThread(squawkId)
-      toast.show(status === "resolved" ? `Squawk #${updated.number} resolved` : "Squawk reopened")
+   }
+
+   async function setStatus(squawkId: string, status: SquawkTargetStatus): Promise<void> {
+      const updated = await api.updateSquawk(squawkId, { status })
+      replaceSquawk(updated)
+      if (status === "open") {
+         if (store.get().threadId === squawkId) await loadThread(squawkId)
+         toast.show(`Squawk #${updated.number} reopened`)
+         return
+      }
+      // A resolved squawk leaves the open list; its popover goes with it, the panel keeps it.
+      if (store.get().threadId === squawkId) {
+         if (store.get().panel === "thread") await loadThread(squawkId)
+         else closeThread()
+      }
+      toast.show(`Squawk #${updated.number} resolved`, {
+         label: "Undo",
+         run: () => {
+            api.updateSquawk(squawkId, { status: "open" }).then(
+               reopened => {
+                  replaceSquawk(reopened)
+                  if (store.get().threadId === squawkId) void loadThread(squawkId)
+               },
+               () => toast.show("Could not reopen the squawk")
+            )
+         }
+      })
+   }
+
+   /** `r`: resolves the open thread. */
+   function resolveOpenThread(): void {
+      const { thread } = store.get()
+      if (!thread || thread.status !== "open") return
+      setStatus(thread.id, "resolved").catch(() => toast.show("Could not resolve the squawk"))
    }
 
    function copyLink(squawk: Squawk): void {
@@ -317,14 +462,42 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       )
    }
 
+   // ---- review (drafts) --------------------------------------------------------------------
+
+   async function updateDraft(squawkId: string, body: string): Promise<void> {
+      const updated = await api.updateSquawk(squawkId, { body })
+      store.set({
+         drafts: store.get().drafts.map(draft => (draft.id === updated.id ? updated : draft))
+      })
+   }
+
+   async function deleteDraft(squawkId: string): Promise<void> {
+      await api.deleteSquawk(squawkId)
+      store.set({ drafts: store.get().drafts.filter(draft => draft.id !== squawkId) })
+      toast.show("Draft deleted")
+   }
+
+   async function submitReview(): Promise<void> {
+      const ids = store.get().drafts.map(draft => draft.id)
+      if (ids.length === 0) return
+      const submitted = await api.submitSquawks(ids)
+      const submittedIds = new Set(submitted.map(squawk => squawk.id))
+      const { squawks, drafts } = store.get()
+      store.set({
+         drafts: drafts.filter(draft => !submittedIds.has(draft.id)),
+         squawks: [...submitted, ...squawks.filter(squawk => !submittedIds.has(squawk.id))],
+         filter: "open"
+      })
+      toast.show(`${plural(submitted.length, "squawk")} sent`)
+   }
+
    // ---- sign-in ----------------------------------------------------------------------------
 
    let stopLogin: (() => void) | null = null
 
    function acceptToken(token: string): void {
       writeToken(config.serverOrigin, token)
-      currentUser = null
-      store.set({ token, login: null })
+      store.set({ token, me: null, login: null })
       refreshNow()
       if (pendingThreadId) openThread(pendingThreadId)
       pendingThreadId = null
@@ -359,6 +532,23 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       store.set({ login: null })
    }
 
+   /** Revokes the overlay's token on the server (best effort) and forgets it here. */
+   function signOut(): void {
+      const tokenId = store.get().me?.token?.id
+      if (tokenId) api.revokeToken(tokenId).catch(() => undefined)
+      writeToken(config.serverOrigin, null)
+      loadedSite = null
+      store.set({
+         token: null,
+         me: null,
+         squawks: [],
+         drafts: [],
+         threadId: null,
+         thread: null,
+         panel: store.get().panel === "closed" ? "closed" : "list"
+      })
+   }
+
    // ---- pin mode and composing -------------------------------------------------------------
 
    function startPinMode(): void {
@@ -376,6 +566,8 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       if (store.get().mode === "pin") store.set({ mode: "idle" })
    }
 
+   let composer: Composer | null = null
+
    async function compose(element: Element, clientX: number, clientY: number): Promise<void> {
       stopPinMode()
       store.set({ mode: "busy" })
@@ -388,25 +580,29 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       const card = createComposer({
          anchor,
          screenshot,
-         user: currentUser,
-         submit: body => submit({ siteKey, pageKey, body, anchor, meta }, screenshot),
+         submit: (body, mode) => submit({ siteKey, pageKey, body, anchor, meta }, screenshot, mode),
          close() {
-            card.remove()
+            card.element.remove()
+            composer = null
             if (screenshot) URL.revokeObjectURL(screenshot.previewUrl)
             if (store.get().mode === "busy") store.set({ mode: "idle" })
          }
       })
-      shadow.insertBefore(card, toast.element)
+      composer = card
+      shadow.insertBefore(card.element, toast.element)
    }
 
    async function submit(
       draft: { siteKey: string; pageKey: string; body: string; anchor: Anchor; meta: SquawkMeta },
-      screenshot: CapturedScreenshot | null
+      screenshot: CapturedScreenshot | null,
+      mode: SubmitMode
    ): Promise<void> {
       const input: CreateSquawkInput = {
          siteKey: draft.siteKey,
          page: draft.pageKey,
          body: draft.body,
+         // Drafts are created right away so the screenshot is safe on the server.
+         draft: mode === "draft",
          anchor: draft.anchor,
          meta: draft.meta,
          ...(screenshot
@@ -421,22 +617,101 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
             : {})
       }
       const created = await api.createSquawk(input, screenshot?.blob ?? null)
+      if (created.status === "draft") {
+         const drafts = [...store.get().drafts.filter(squawk => squawk.id !== created.id), created]
+         store.set({ drafts })
+         toast.show(`Added to your review · ${plural(drafts.length, "draft")}`, {
+            label: "Review",
+            run: openPanel
+         })
+         return
+      }
       store.set({
          squawks: [created, ...store.get().squawks.filter(squawk => squawk.id !== created.id)]
       })
-      toast.show(`Squawk #${created.number} filed`, {
+      toast.show(`Squawk #${created.number} sent`, {
          label: "View",
          run: () => openThread(created.id)
       })
    }
 
-   window.addEventListener("keydown", event => {
-      if (event.key !== "c" || event.repeat || event.defaultPrevented) return
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      if (isEditable(event.composedPath()[0])) return
-      if (store.get().mode !== "idle") return
-      startPinMode()
-   })
+   // ---- keyboard ---------------------------------------------------------------------------
+
+   /**
+    * Shortcuts, from the page and from inside the overlay: `c` new squawk, `j`/`k` (or `]`/`[`)
+    * next/previous squawk, `r` resolve, `Esc` closes the innermost thing.
+    */
+   function handleShortcut(event: KeyboardEvent): void {
+      if (event.defaultPrevented || event.isComposing) return
+      const target = event.composedPath()[0]
+      const inOverlay = event.composedPath().includes(host)
+      if (event.key === "Escape") return handleEscape(event, target, inOverlay)
+      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+      if (isEditable(target) || store.get().mode !== "idle") return
+      const handled = runShortcut(event.key)
+      if (handled) event.preventDefault()
+   }
+
+   function runShortcut(key: string): boolean {
+      const signedIn = Boolean(store.get().token)
+      switch (key) {
+         case "c":
+            startPinMode()
+            return true
+         case "j":
+         case "]":
+            if (signedIn) stepThread(1)
+            return signedIn
+         case "k":
+         case "[":
+            if (signedIn) stepThread(-1)
+            return signedIn
+         case "r":
+            if (!store.get().thread) return false
+            resolveOpenThread()
+            return true
+         default:
+            return false
+      }
+   }
+
+   function handleEscape(
+      event: KeyboardEvent,
+      target: EventTarget | undefined,
+      inOverlay: boolean
+   ): void {
+      if (isEditable(target)) {
+         // The page's own fields keep their Escape; in ours it first leaves a non-empty field.
+         if (!inOverlay) return
+         if ((target as HTMLTextAreaElement).value?.trim()) {
+            ;(target as HTMLElement).blur()
+            event.preventDefault()
+            return
+         }
+      }
+      const state = store.get()
+      if (composer) composer.close()
+      else if (state.threadId) closeThread()
+      else if (state.panel !== "closed") closePanel()
+      else return
+      event.preventDefault()
+   }
+
+   window.addEventListener("keydown", handleShortcut)
+
+   // Clicks outside the thread popover close it, like any other popover.
+   window.addEventListener(
+      "pointerdown",
+      event => {
+         if (!popover.isOpen()) return
+         const path = event.composedPath()
+         const inside = [popover.element, pins.element, panel.element, toast.element].some(part =>
+            path.includes(part)
+         )
+         if (!inside && !shadow.querySelector(".lightbox")) closeThread()
+      },
+      true
+   )
 
    // ---- page tracking and DOM changes ------------------------------------------------------
 
@@ -484,7 +759,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       },
       setSite(key) {
          if (typeof key !== "string" || !key || key === store.get().siteKey) return
-         store.set({ siteKey: key, squawks: [], threadId: null, thread: null })
+         store.set({ siteKey: key, squawks: [], drafts: [], threadId: null, thread: null })
          if (store.get().panel === "thread") store.set({ panel: "list" })
          refreshNow()
       },
@@ -519,6 +794,16 @@ function captureMeta(
 
 function sameOrNew(previous: Squawk | undefined, next: Squawk): Squawk {
    return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next
+}
+
+/** The fresh list, reusing unchanged items and the whole previous array if nothing changed. */
+function mergeList(previous: Squawk[], next: Squawk[]): Squawk[] {
+   const byId = new Map(previous.map(squawk => [squawk.id, squawk]))
+   const merged = next.map(squawk => sameOrNew(byId.get(squawk.id), squawk))
+   const unchanged =
+      merged.length === previous.length &&
+      merged.every((squawk, index) => squawk === previous[index])
+   return unchanged ? previous : merged
 }
 
 function isEditable(target: EventTarget | undefined): boolean {

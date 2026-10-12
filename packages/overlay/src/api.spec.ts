@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { ApiError, createApiClient } from "./api"
-import { SQUAWK_ID, squawkFixture } from "./test-fixtures"
+import { DRAFT_ID, SQUAWK_ID, draftFixture, squawkFixture } from "./test-fixtures"
 
 function jsonResponse(body: unknown, status = 200): Response {
    return new Response(JSON.stringify(body), {
@@ -47,7 +47,7 @@ describe("api client", () => {
       const screenshot = new Blob(["png"], { type: "image/png" })
 
       await api.createSquawk(
-         { siteKey: "feature/foo", page: "/", body: "Hi", anchor: null, meta: {} },
+         { siteKey: "feature/foo", page: "/", body: "Hi", draft: true, anchor: null, meta: {} },
          screenshot
       )
 
@@ -55,7 +55,10 @@ describe("api client", () => {
       expect(url).toBe("https://squawk.test/api/squawks")
       expect(init.method).toBe("POST")
       const form = init.body as FormData
-      expect(JSON.parse(String(form.get("squawk")))).toMatchObject({ siteKey: "feature/foo" })
+      expect(JSON.parse(String(form.get("squawk")))).toMatchObject({
+         siteKey: "feature/foo",
+         draft: true
+      })
       expect(form.get("screenshot")).toBeInstanceOf(Blob)
       expect(init.headers).toEqual({ Authorization: "Bearer sqk_secret" })
    })
@@ -64,13 +67,43 @@ describe("api client", () => {
       const { api, fetchImplementation, lastRequest } = setup()
       fetchImplementation.mockResolvedValue(jsonResponse(squawkFixture({ status: "resolved" })))
 
-      await api.setStatus(SQUAWK_ID, "resolved")
+      await api.updateSquawk(SQUAWK_ID, { status: "resolved" })
 
       const { url, init } = lastRequest()
       expect(url).toBe(`https://squawk.test/api/squawks/${SQUAWK_ID}`)
       expect(init.method).toBe("PATCH")
       expect(init.body).toBe('{"status":"resolved"}')
       expect(init.headers).toMatchObject({ "Content-Type": "application/json" })
+   })
+
+   it("edits, deletes and submits drafts", async () => {
+      const { api, fetchImplementation, lastRequest } = setup()
+
+      fetchImplementation.mockResolvedValueOnce(jsonResponse(draftFixture({ body: "New text" })))
+      const edited = await api.updateSquawk(DRAFT_ID, { body: "New text" })
+      expect(edited.body).toBe("New text")
+      expect(lastRequest().init.body).toBe('{"body":"New text"}')
+
+      fetchImplementation.mockResolvedValueOnce(new Response(null, { status: 204 }))
+      await api.deleteSquawk(DRAFT_ID)
+      expect(lastRequest().url).toBe(`https://squawk.test/api/squawks/${DRAFT_ID}`)
+      expect(lastRequest().init.method).toBe("DELETE")
+
+      fetchImplementation.mockResolvedValueOnce(
+         jsonResponse({ items: [draftFixture({ status: "open" })] })
+      )
+      const submitted = await api.submitSquawks([DRAFT_ID])
+      expect(submitted.map(squawk => squawk.status)).toEqual(["open"])
+      expect(lastRequest().url).toBe("https://squawk.test/api/squawks/submit")
+      expect(JSON.parse(String(lastRequest().init.body))).toEqual({ ids: [DRAFT_ID] })
+   })
+
+   it("revokes its own token on sign-out", async () => {
+      const { api, fetchImplementation, lastRequest } = setup()
+      fetchImplementation.mockResolvedValueOnce(new Response(null, { status: 204 }))
+      await api.revokeToken("token-id")
+      expect(lastRequest().url).toBe("https://squawk.test/api/tokens/token-id")
+      expect(lastRequest().init.method).toBe("DELETE")
    })
 
    it("reports 401 and throws an unauthorized error", async () => {

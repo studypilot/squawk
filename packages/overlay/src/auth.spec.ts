@@ -9,7 +9,14 @@ const APPROVED: DevicePollResponse = {
    status: "approved",
    token: "sqk_new",
    expiresAt: "2026-11-10T12:00:00.000Z",
-   principal: { kind: "user", id: USER_ID, email: "a@example.com", name: null, avatarUrl: null }
+   principal: {
+      kind: "user",
+      id: USER_ID,
+      email: "a@example.com",
+      name: null,
+      avatarUrl: null,
+      agent: null
+   }
 }
 
 function setup(polls: (DevicePollResponse | Error)[]) {

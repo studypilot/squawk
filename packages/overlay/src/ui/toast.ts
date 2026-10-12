@@ -1,6 +1,8 @@
 import { h } from "./dom"
 
 const TOAST_DURATION_MS = 3500
+/** Toasts with an action (Undo, View) stay longer so there is time to reach the button. */
+const ACTION_TOAST_DURATION_MS = 6000
 
 export interface ToastAction {
    label: string
@@ -42,7 +44,7 @@ export function createToast(): Toast {
          }
          element.classList.add("is-visible")
          clearTimeout(timer)
-         timer = setTimeout(hide, TOAST_DURATION_MS)
+         timer = setTimeout(hide, action ? ACTION_TOAST_DURATION_MS : TOAST_DURATION_MS)
       }
    }
 }

@@ -5,7 +5,8 @@ import {
    listSquawksResponseSchema,
    meResponseSchema,
    squawkDetailSchema,
-   squawkSchema
+   squawkSchema,
+   submitSquawksResponseSchema
 } from "@squawk/shared"
 import type {
    Comment,
@@ -17,7 +18,8 @@ import type {
    MeResponse,
    Squawk,
    SquawkDetail,
-   SquawkStatus
+   SubmitSquawksResponse,
+   UpdateSquawkInput
 } from "@squawk/shared"
 
 interface ResponseTypes {
@@ -25,6 +27,7 @@ interface ResponseTypes {
    squawkList: ListSquawksResponse
    squawkDetail: SquawkDetail
    squawk: Squawk
+   submitted: SubmitSquawksResponse
    comment: Comment
    deviceStart: DeviceStartResponse
    devicePoll: DevicePollResponse
@@ -44,6 +47,7 @@ const responseSchemas:
         squawkList: listSquawksResponseSchema,
         squawkDetail: squawkDetailSchema,
         squawk: squawkSchema,
+        submitted: submitSquawksResponseSchema,
         comment: commentSchema,
         deviceStart: deviceStartResponseSchema,
         devicePoll: devicePollResponseSchema
@@ -64,7 +68,8 @@ export class ApiError extends Error {
 export interface ListSquawksParams {
    site: string
    page?: string
-   status?: "open" | "resolved" | "all"
+   /** `draft` lists only the caller's own drafts; the others never include drafts. */
+   status?: "open" | "resolved" | "all" | "draft"
    cursor?: string
    limit?: number
 }
@@ -75,7 +80,14 @@ export interface ApiClient {
    getSquawk(id: string): Promise<SquawkDetail>
    createSquawk(input: CreateSquawkInput, screenshot: Blob | null): Promise<Squawk>
    addComment(squawkId: string, body: string): Promise<Comment>
-   setStatus(squawkId: string, status: SquawkStatus): Promise<Squawk>
+   /** Resolves or reopens a squawk, or edits the body of an own draft. */
+   updateSquawk(squawkId: string, input: UpdateSquawkInput): Promise<Squawk>
+   /** Deletes an own draft. */
+   deleteSquawk(squawkId: string): Promise<void>
+   /** Turns own drafts into open squawks in one go. */
+   submitSquawks(ids: string[]): Promise<Squawk[]>
+   /** Revokes a token, here the overlay's own login token on sign-out. */
+   revokeToken(tokenId: string): Promise<void>
    /** Fetches an authenticated screenshot; `path` is the relative `screenshot.url`. */
    fetchScreenshot(path: string): Promise<Blob>
    startDeviceLogin(label: string): Promise<DeviceStartResponse>
@@ -156,11 +168,24 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
             method: "POST",
             json: { body }
          }),
-      setStatus: (squawkId, status) =>
+      updateSquawk: (squawkId, input) =>
          json("squawk", `/squawks/${encodeURIComponent(squawkId)}`, {
             method: "PATCH",
-            json: { status }
+            json: input
          }),
+      async deleteSquawk(squawkId) {
+         await send(`/squawks/${encodeURIComponent(squawkId)}`, { method: "DELETE" })
+      },
+      async submitSquawks(ids) {
+         const result = await json("submitted", "/squawks/submit", {
+            method: "POST",
+            json: { ids }
+         })
+         return result.items
+      },
+      async revokeToken(tokenId) {
+         await send(`/tokens/${encodeURIComponent(tokenId)}`, { method: "DELETE" })
+      },
       async fetchScreenshot(path) {
          const response = await send(path.replace(/^\/api/, ""))
          return response.blob()

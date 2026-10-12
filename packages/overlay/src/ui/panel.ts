@@ -1,36 +1,43 @@
-import { LIMITS, markdownPreview, renderMarkdown } from "@squawk/shared"
-import type { Author, Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
+import { markdownPreview } from "@squawk/shared"
+import type { Squawk } from "@squawk/shared"
 import type { LoginState } from "../auth"
+import { groupByPage } from "../state"
 import type { ListFilter, OverlayState } from "../state"
 import { copyText } from "./clipboard"
-import { autoGrow, avatar, h, icon, squawkMark } from "./dom"
-import type { IconName } from "./dom"
-import { authorName, relativeTime } from "./format"
+import { autoGrow, avatar, avatarStack, h, icon, spinner, squawkMark } from "./dom"
+import { authorName, authorTooltip, plural, relativeTime } from "./format"
+import { iconButton } from "./thread"
 
 export interface PanelHandlers {
    close(): void
    startPinMode(): void
    setFilter(filter: ListFilter): void
    openThread(squawkId: string): void
-   showList(): void
+   /** The list row under the pointer, or null when it left; highlights its pin. */
+   hoverSquawk(squawkId: string | null): void
+   /** Scrolls the page to a draft's pin while it is edited. */
+   revealDraft(squawkId: string): void
    signIn(): void
    signInWithCode(): void
    cancelSignIn(): void
-   reply(squawkId: string, body: string): Promise<void>
-   setStatus(squawkId: string, status: SquawkStatus): Promise<void>
-   copyLink(squawk: Squawk): void
-   loadScreenshot(path: string): Promise<Blob>
+   signOut(): void
+   updateDraft(squawkId: string, body: string): Promise<void>
+   deleteDraft(squawkId: string): Promise<void>
+   submitReview(): Promise<void>
 }
 
 export interface Panel {
    element: HTMLElement
-   render(state: OverlayState): void
+   /** `thread` is the open thread's view, shown when `state.panel` is `thread`. */
+   render(state: OverlayState, thread: HTMLElement | null): void
    /** Shows skeleton rows until the first list of the site has arrived. */
    setLoaded(loaded: boolean): void
    /** Squawks of this page whose pin could not be placed; shown in the tray. */
    setOrphans(squawks: Squawk[]): void
    /** Marks the list row whose page pin is under the pointer. */
    setHoveredPin(squawkId: string | null): void
+   /** Opens the inline editor of a draft, e.g. after its pin was clicked. */
+   editDraft(squawkId: string): void
 }
 
 const RENDER_KEYS = [
@@ -38,59 +45,80 @@ const RENDER_KEYS = [
    "token",
    "login",
    "squawks",
+   "drafts",
+   "me",
    "filter",
    "threadId",
-   "thread",
    "siteKey",
    "pageKey"
 ] as const satisfies readonly (keyof OverlayState)[]
 
 const SKELETON_ROWS = 4
 const COPIED_FEEDBACK_MS = 1200
+const DELETE_CONFIRM_MS = 3000
 
-/** Slide-over on the right: sign-in, the squawk list, or one thread. */
+/** Sidebar on the right (bottom sheet on phones): sign-in, review, squawk list or a thread. */
 export function createPanel(handlers: PanelHandlers): Panel {
-   const siteLabel = h("code", { class: "site chip mono" })
-   const pageLabel = h("div", { class: "page" })
-   const newButton = h(
-      "button",
-      {
-         class: "button primary small",
-         type: "button",
-         title: "New squawk (C)",
-         "aria-label": "New squawk (C)",
-         onclick: () => handlers.startPinMode()
-      },
-      [icon("plus", 14), "New"]
-   )
+   const siteLabel = h("code", { class: "site" })
+   const newButton = iconButton("plus", "New squawk (C)", () => handlers.startPinMode())
+   newButton.classList.add("new-button")
+   const openTab = segment("open", "Open")
+   const resolvedTab = segment("resolved", "Resolved")
+   const segmented = h("div", { class: "segmented", role: "group", "aria-label": "Filter" }, [
+      openTab.button,
+      resolvedTab.button
+   ])
    const header = h("div", { class: "panel-header" }, [
-      h("div", { class: "panel-brand" }, [
-         squawkMark(18),
-         h("span", { class: "wordmark" }, ["Squawk"]),
+      h("div", { class: "panel-top" }, [
+         h("span", { class: "panel-mark", title: "Squawk" }, [squawkMark(18)]),
+         siteLabel,
+         h("span", { class: "spacer" }),
          newButton,
-         iconButton("close", "Close", () => handlers.close())
+         iconButton("close", "Close (Esc)", () => handlers.close())
       ]),
-      h("div", { class: "panel-keys" }, [siteLabel, pageLabel])
+      segmented
    ])
    const tray = h("div", { class: "orphan-tray", hidden: true })
    const body = h("div", { class: "panel-body" })
-   const element = h("aside", { class: "panel", "aria-label": "Squawks" }, [header, tray, body])
+   const account = h("div", { class: "account" })
+   const footer = h("div", { class: "panel-footer", hidden: true }, [
+      account,
+      h("button", { class: "text-button", type: "button", onclick: () => handlers.signOut() }, [
+         "Sign out"
+      ])
+   ])
+   const element = h(
+      "aside",
+      { class: "panel", "aria-label": "Squawks", "aria-hidden": "true", inert: true },
+      [header, tray, body, footer]
+   )
    let previous: OverlayState | null = null
+   let previousThread: HTMLElement | null = null
    let bodyKey = ""
-   let threadView: ThreadView | null = null
    let loaded = false
    let hoveredPinId: string | null = null
+   let shownThreadId: string | null = null
+   /** Open draft editors by squawk id; they survive re-renders so typing is never lost. */
+   const draftEditors = new Map<string, HTMLElement>()
 
-   function showBody(key: string, content: Node): void {
-      const scrollTop = key === bodyKey ? body.scrollTop : 0
-      if (key !== bodyKey || body.firstChild !== content) body.replaceChildren(content)
-      body.scrollTop = scrollTop
-      bodyKey = key
+   function segment(
+      filter: ListFilter,
+      label: string
+   ): { button: HTMLButtonElement; count: HTMLElement } {
+      const count = h("span", { class: "count" })
+      const button = h(
+         "button",
+         { class: "segment", type: "button", onclick: () => handlers.setFilter(filter) },
+         [label, count]
+      )
+      return { button, count }
    }
 
-   function disposeThreadView(): void {
-      threadView?.dispose()
-      threadView = null
+   function showBody(key: string, content: Node[]): void {
+      const scrollTop = key === bodyKey ? body.scrollTop : 0
+      body.replaceChildren(...content)
+      body.scrollTop = scrollTop
+      bodyKey = key
    }
 
    function applyHoveredPin(): void {
@@ -99,47 +127,310 @@ export function createPanel(handlers: PanelHandlers): Panel {
       }
    }
 
-   function render(state: OverlayState): void {
-      element.classList.toggle("is-open", state.panel !== "closed")
-      if (state.panel === "closed") {
-         disposeThreadView()
+   function rerender(): void {
+      if (previous) render(previous, previousThread)
+   }
+
+   function render(state: OverlayState, thread: HTMLElement | null): void {
+      const open = state.panel !== "closed"
+      element.classList.toggle("is-open", open)
+      element.setAttribute("aria-hidden", String(!open))
+      element.toggleAttribute("inert", !open)
+      if (!open) {
          bodyKey = ""
+         shownThreadId = null
          return
       }
       siteLabel.textContent = state.siteKey
-      siteLabel.title = state.siteKey
-      pageLabel.textContent = state.pageKey
-      pageLabel.title = state.pageKey
+      siteLabel.title = `Site ${state.siteKey}`
       newButton.hidden = !state.token
-      tray.hidden = !state.token || state.panel !== "list" || tray.childElementCount === 0
-      if (!state.token) {
-         disposeThreadView()
-         return showBody("sign-in", signInView(state.login, handlers))
-      }
-      if (state.panel === "thread" && state.threadId) {
-         if (threadView?.squawkId !== state.threadId) {
-            disposeThreadView()
-            threadView = createThreadView(state.threadId, handlers)
-         }
-         threadView.update(state)
-         return showBody(`thread:${state.threadId}`, threadView.element)
-      }
-      disposeThreadView()
-      showBody("list", listView(state, loaded, handlers))
+      const listing = Boolean(state.token) && state.panel !== "thread"
+      segmented.hidden = !listing
+      tray.hidden = !listing || tray.childElementCount === 0
+      footer.hidden = !state.token
+      renderAccount(state)
+      renderSegments(state)
+      if (!state.token) return showBody("sign-in", [signInView(state.login, handlers)])
+      if (state.panel === "thread" && thread) return showBody(`thread:${state.threadId}`, [thread])
+      showBody("list", listView(state))
       applyHoveredPin()
+      if (state.threadId !== shownThreadId) {
+         shownThreadId = state.threadId
+         body.querySelector(".item.is-selected")?.scrollIntoView({ block: "nearest" })
+      }
+   }
+
+   function renderAccount(state: OverlayState): void {
+      const principal = state.me?.principal
+      account.replaceChildren(
+         ...(principal
+            ? [
+                 avatar(principal, 20),
+                 h("span", { class: "name", title: authorTooltip(principal) }, [
+                    principal.kind === "user" ? principal.name || principal.email : principal.name
+                 ])
+              ]
+            : [])
+      )
+   }
+
+   function renderSegments(state: OverlayState): void {
+      const counts = { open: 0, resolved: 0 }
+      for (const squawk of state.squawks) {
+         if (squawk.status !== "draft") counts[squawk.status]++
+      }
+      for (const [filter, tab] of [
+         ["open", openTab],
+         ["resolved", resolvedTab]
+      ] as const) {
+         tab.count.textContent = String(counts[filter])
+         tab.button.classList.toggle("is-selected", state.filter === filter)
+         tab.button.setAttribute("aria-pressed", String(state.filter === filter))
+      }
+   }
+
+   // ---- list --------------------------------------------------------------------------------
+
+   function listView(state: OverlayState): Node[] {
+      const nodes: Node[] = []
+      if (state.drafts.length > 0) nodes.push(reviewBlock(state))
+      const groups = groupByPage(state)
+      for (const [page, squawks] of groups) {
+         const current = page === state.pageKey
+         nodes.push(
+            h("section", { class: "group", "aria-label": current ? "This page" : page }, [
+               h("h3", { class: "group-title", title: page }, [
+                  current ? "This page" : page,
+                  h("span", { class: "count" }, [String(squawks.length)])
+               ]),
+               ...squawks.map(squawk => listItem(squawk, state.threadId === squawk.id))
+            ])
+         )
+      }
+      if (groups.length > 0) return nodes
+      if (!loaded && state.squawks.length === 0) return [...nodes, ...skeletonRows()]
+      return [...nodes, emptyState(state.filter)]
+   }
+
+   function listItem(squawk: Squawk, selected: boolean): HTMLElement {
+      const replies = squawk.commentCount
+      const resolved = squawk.status === "resolved"
+      const row = h(
+         "button",
+         {
+            class: `item${resolved ? " is-resolved" : ""}${selected ? " is-selected" : ""}`,
+            type: "button",
+            "data-id": squawk.id,
+            "aria-current": selected ? "true" : null,
+            onclick: () => handlers.openThread(squawk.id),
+            onpointerenter: () => handlers.hoverSquawk(squawk.id),
+            onpointerleave: () => handlers.hoverSquawk(null)
+         },
+         [
+            avatarStack([squawk.author, squawk.lastAuthor]),
+            h("div", { class: "item-text" }, [
+               h("div", { class: "item-head" }, [
+                  h("span", { class: "name", title: authorTooltip(squawk.author) }, [
+                     authorName(squawk.author)
+                  ]),
+                  h("span", { class: "time" }, [
+                     relativeTime(squawk.submittedAt ?? squawk.createdAt)
+                  ]),
+                  h("span", { class: "number" }, [`#${squawk.number}`])
+               ]),
+               h("div", { class: "item-body" }, [markdownPreview(squawk.body)]),
+               (replies > 0 || resolved) &&
+                  h("div", { class: "item-meta" }, [
+                     resolved && h("span", { class: "resolved" }, [icon("check", 12), "Resolved"]),
+                     replies > 0 &&
+                        h(
+                           "span",
+                           {
+                              class: "replies",
+                              title: `Last reply by ${authorName(squawk.lastAuthor)}`
+                           },
+                           [icon("comment", 12), plural(replies, "reply", "replies")]
+                        )
+                  ])
+            ])
+         ]
+      )
+      return row
+   }
+
+   // ---- review ------------------------------------------------------------------------------
+
+   function reviewBlock(state: OverlayState): HTMLElement {
+      const count = state.drafts.length
+      const error = h("div", { class: "error", role: "alert", hidden: true })
+      const submit = h("button", { class: "button primary submit-review", type: "button" }, [
+         h("span", {}, [`Submit review (${count})`]),
+         spinner()
+      ])
+      submit.addEventListener("click", () => {
+         if (submit.disabled) return
+         submit.disabled = true
+         submit.classList.add("is-busy")
+         error.hidden = true
+         handlers.submitReview().catch((failure: unknown) => {
+            error.textContent = failure instanceof Error ? failure.message : "Submitting failed"
+            error.hidden = false
+            submit.disabled = false
+            submit.classList.remove("is-busy")
+         })
+      })
+      const drafts = [...state.drafts].sort((first, second) => first.number - second.number)
+      return h("section", { class: "review", "aria-label": "Your review" }, [
+         h("div", { class: "review-head" }, [
+            h("h3", {}, ["Your review"]),
+            h("span", { class: "muted" }, [plural(count, "draft")]),
+            h("span", { class: "review-hint" }, ["Only you can see drafts"])
+         ]),
+         h(
+            "ul",
+            { class: "drafts" },
+            drafts.map(draft => draftEditors.get(draft.id) ?? draftRow(draft, state))
+         ),
+         submit,
+         error
+      ])
+   }
+
+   function draftRow(draft: Squawk, state: OverlayState): HTMLElement {
+      let confirmTimer: ReturnType<typeof setTimeout> | undefined
+      const deleteButton = h(
+         "button",
+         {
+            class: "icon-button delete",
+            type: "button",
+            title: "Delete draft",
+            "aria-label": "Delete draft"
+         },
+         [icon("trash", 14)]
+      )
+      const resetDelete = (): void => {
+         clearTimeout(confirmTimer)
+         deleteButton.classList.remove("is-confirm")
+         deleteButton.replaceChildren(icon("trash", 14))
+         deleteButton.setAttribute("aria-label", "Delete draft")
+      }
+      deleteButton.addEventListener("click", () => {
+         if (!deleteButton.classList.contains("is-confirm")) {
+            deleteButton.classList.add("is-confirm")
+            deleteButton.replaceChildren("Delete")
+            deleteButton.setAttribute("aria-label", "Confirm deleting the draft")
+            confirmTimer = setTimeout(resetDelete, DELETE_CONFIRM_MS)
+            return
+         }
+         resetDelete()
+         deleteButton.disabled = true
+         handlers.deleteDraft(draft.id).catch(() => (deleteButton.disabled = false))
+      })
+      const elsewhere = draft.page !== state.pageKey
+      return h("li", { class: "draft", "data-id": draft.id }, [
+         h("span", { class: "draft-number" }, [`#${draft.number}`]),
+         h(
+            "button",
+            {
+               class: "draft-body",
+               type: "button",
+               title: "Edit draft",
+               onclick: () => startEditing(draft),
+               onpointerenter: () => handlers.hoverSquawk(draft.id),
+               onpointerleave: () => handlers.hoverSquawk(null)
+            },
+            [
+               h("span", { class: "draft-text" }, [markdownPreview(draft.body)]),
+               elsewhere && h("span", { class: "draft-page", title: draft.page }, [draft.page])
+            ]
+         ),
+         iconButton("pencil", "Edit draft", () => startEditing(draft)),
+         deleteButton
+      ])
+   }
+
+   function startEditing(draft: Squawk): void {
+      if (!draftEditors.has(draft.id)) draftEditors.set(draft.id, draftEditor(draft))
+      rerender()
+      handlers.revealDraft(draft.id)
+      const textarea = draftEditors.get(draft.id)?.querySelector("textarea")
+      textarea?.focus()
+      textarea?.setSelectionRange(textarea.value.length, textarea.value.length)
+   }
+
+   function draftEditor(draft: Squawk): HTMLElement {
+      const textarea = h("textarea", { "aria-label": `Edit draft #${draft.number}` })
+      textarea.value = draft.body
+      autoGrow(textarea, 2, 8)
+      const error = h("div", { class: "error", role: "alert", hidden: true })
+      const save = h("button", { class: "button primary small", type: "button" }, [
+         h("span", {}, ["Save"]),
+         spinner()
+      ])
+      const stop = (): void => {
+         draftEditors.delete(draft.id)
+         rerender()
+      }
+      const cancel = h("button", { class: "button ghost small", type: "button", onclick: stop }, [
+         "Cancel"
+      ])
+      const commit = (): void => {
+         const next = textarea.value.trim()
+         if (save.disabled) return
+         if (!next || next === draft.body) return stop()
+         save.disabled = true
+         textarea.disabled = true
+         save.classList.add("is-busy")
+         error.hidden = true
+         handlers.updateDraft(draft.id, next).then(stop, (failure: unknown) => {
+            error.textContent = failure instanceof Error ? failure.message : "Saving failed"
+            error.hidden = false
+            save.disabled = false
+            textarea.disabled = false
+            save.classList.remove("is-busy")
+            textarea.focus()
+         })
+      }
+      save.addEventListener("click", commit)
+      textarea.addEventListener("keydown", event => {
+         if (event.key === "Escape") {
+            event.preventDefault()
+            stop()
+            return
+         }
+         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return
+         event.preventDefault()
+         commit()
+      })
+      return h("li", { class: "draft is-editing", "data-id": draft.id }, [
+         h("span", { class: "draft-number" }, [`#${draft.number}`]),
+         h("div", { class: "draft-editor" }, [
+            textarea,
+            error,
+            h("div", { class: "actions" }, [cancel, save])
+         ])
+      ])
    }
 
    return {
       element,
-      render(state) {
-         const changed = !previous || RENDER_KEYS.some(key => previous?.[key] !== state[key])
+      render(state, thread) {
+         const changed =
+            !previous ||
+            thread !== previousThread ||
+            RENDER_KEYS.some(key => previous?.[key] !== state[key])
          previous = state
-         if (changed) render(state)
+         previousThread = thread
+         // Editors of drafts that were submitted or deleted elsewhere go away.
+         for (const id of draftEditors.keys()) {
+            if (!state.drafts.some(draft => draft.id === id)) draftEditors.delete(id)
+         }
+         if (changed) render(state, thread)
       },
       setLoaded(next) {
          if (loaded === next) return
          loaded = next
-         if (previous && bodyKey === "list") render(previous)
+         if (bodyKey === "list") rerender()
       },
       setOrphans(squawks) {
          tray.replaceChildren()
@@ -150,31 +441,34 @@ export function createPanel(handlers: PanelHandlers): Panel {
                   h(
                      "button",
                      {
-                        class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}`,
+                        class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}${squawk.status === "draft" ? " is-draft" : ""}`,
                         type: "button",
                         title: `#${squawk.number}: ${markdownPreview(squawk.body)}`,
-                        onclick: () => handlers.openThread(squawk.id)
+                        onclick: () =>
+                           squawk.status === "draft"
+                              ? startEditing(squawk)
+                              : handlers.openThread(squawk.id)
                      },
                      [h("span", {}, [String(squawk.number)])]
                   )
                )
             )
          }
-         tray.hidden = squawks.length === 0 || !previous?.token || previous.panel !== "list"
+         tray.hidden =
+            squawks.length === 0 ||
+            !previous?.token ||
+            previous.panel === "thread" ||
+            previous.panel === "closed"
       },
       setHoveredPin(squawkId) {
          hoveredPinId = squawkId
          applyHoveredPin()
+      },
+      editDraft(squawkId) {
+         const draft = previous?.drafts.find(candidate => candidate.id === squawkId)
+         if (draft) startEditing(draft)
       }
    }
-}
-
-function iconButton(name: IconName, label: string, onclick: () => void): HTMLButtonElement {
-   return h(
-      "button",
-      { class: "icon-button", type: "button", title: label, "aria-label": label, onclick },
-      [icon(name)]
-   )
 }
 
 // ---- sign-in -------------------------------------------------------------------------------
@@ -289,105 +583,23 @@ function userCode(code: string): HTMLElement {
    return tile
 }
 
-// ---- list ----------------------------------------------------------------------------------
-
-function listView(state: OverlayState, loaded: boolean, handlers: PanelHandlers): HTMLElement {
-   const counts = { open: 0, resolved: 0 }
-   for (const squawk of state.squawks) counts[squawk.status]++
-   const tab = (filter: ListFilter, label: string): HTMLButtonElement =>
-      h(
-         "button",
-         {
-            class: `tab${state.filter === filter ? " is-selected" : ""}`,
-            type: "button",
-            "aria-pressed": String(state.filter === filter),
-            onclick: () => handlers.setFilter(filter)
-         },
-         [label, h("span", { class: "count" }, [String(counts[filter])])]
-      )
-
-   const visible = state.squawks
-      .filter(squawk => squawk.status === state.filter)
-      .sort((first, second) => second.number - first.number)
-   const groups = new Map<string, Squawk[]>([[state.pageKey, []]])
-   for (const squawk of visible) {
-      const group = groups.get(squawk.page) ?? []
-      group.push(squawk)
-      groups.set(squawk.page, group)
-   }
-
-   const sections: HTMLElement[] = []
-   for (const [page, squawks] of groups) {
-      if (squawks.length === 0) continue
-      const current = page === state.pageKey
-      sections.push(
-         h("section", {}, [
-            h("h3", { class: "group-title", title: page }, [current ? "This page" : page]),
-            ...squawks.map(squawk => listItem(squawk, current, handlers))
-         ])
-      )
-   }
-   const content =
-      sections.length > 0
-         ? sections
-         : !loaded && state.squawks.length === 0
-           ? skeletonRows()
-           : [emptyState(state.filter)]
-   return h("div", { class: "list" }, [
-      h("div", { class: "tabs", role: "group", "aria-label": "Filter" }, [
-         tab("open", "Open"),
-         tab("resolved", "Resolved")
-      ]),
-      ...content
-   ])
-}
-
-function listItem(squawk: Squawk, onThisPage: boolean, handlers: PanelHandlers): HTMLElement {
-   const replies = squawk.commentCount
-   return h(
-      "button",
-      {
-         class: `item${squawk.status === "resolved" ? " is-resolved" : ""}`,
-         type: "button",
-         "data-id": squawk.id,
-         onclick: () => handlers.openThread(squawk.id)
-      },
-      [
-         avatar(squawk.author, 24),
-         h("div", { class: "item-text" }, [
-            h("div", { class: "item-body" }, [markdownPreview(squawk.body)]),
-            h("div", { class: "item-meta" }, [
-               h("span", { class: "number" }, [`#${squawk.number}`]),
-               h("span", {}, ["·"]),
-               h("span", {}, [authorName(squawk.author)]),
-               h("span", {}, ["·"]),
-               h("span", {}, [relativeTime(squawk.createdAt)]),
-               !onThisPage && h("span", {}, ["·"]),
-               !onThisPage && h("span", { class: "page-key", title: squawk.page }, [squawk.page]),
-               replies > 0 && h("span", {}, ["·"]),
-               replies > 0 &&
-                  h("span", { class: "replies" }, [
-                     icon("comment", 12),
-                     String(replies),
-                     h("span", { class: "sr-only" }, [replies === 1 ? " reply" : " replies"])
-                  ])
-            ])
-         ])
-      ]
-   )
-}
-
 function emptyState(filter: ListFilter): HTMLElement {
    const open = filter === "open"
    return h("div", { class: "empty" }, [
-      icon(open ? "comment" : "check", 24),
-      h("div", { class: "title" }, [open ? "No open squawks here yet" : "Nothing resolved yet"]),
+      h("span", { class: "empty-icon" }, [icon(open ? "comment" : "check", 20)]),
+      h("div", { class: "title" }, [open ? "No open squawks" : "Nothing resolved yet"]),
       h(
          "div",
          { class: "hint" },
          open
-            ? ["Press ", h("kbd", {}, ["C"]), " or tap + to file the first one"]
-            : ["Resolved squawks of this site show up here"]
+            ? [
+                 "Press ",
+                 h("kbd", {}, ["C"]),
+                 " or click ",
+                 h("kbd", {}, ["+"]),
+                 " to leave the first squawk"
+              ]
+            : ["Resolved squawks of this site show up here."]
       )
    ])
 }
@@ -404,240 +616,4 @@ function skeletonRows(): HTMLElement[] {
          h("div", { class: "skeleton-text" }, [title, meta])
       ])
    })
-}
-
-// ---- thread --------------------------------------------------------------------------------
-
-interface ThreadView {
-   squawkId: string
-   element: HTMLElement
-   update(state: OverlayState): void
-   dispose(): void
-}
-
-function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView {
-   const title = h("span", { class: "thread-title" })
-   const status = h("span", { class: "chip status" })
-   const banner = h("div", { class: "thread-banner", hidden: true })
-   const shot = h("div", { class: "shot", hidden: true })
-   const messages = h("div", { class: "messages" }, threadSkeleton())
-   const textarea = h("textarea", {
-      placeholder: "Reply…",
-      "aria-label": "Reply",
-      maxlength: LIMITS.bodyMaxLength
-   })
-   autoGrow(textarea, 2, 6)
-   const replyButton = h("button", { class: "button primary", type: "button" }, ["Reply"])
-   const statusButton = h("button", { class: "button", type: "button" })
-   const copyButton = iconButton("link", "Copy link", () => {
-      if (detail) handlers.copyLink(detail)
-   })
-   const pageLink = h("a", { class: "button ghost", hidden: true }, [
-      "Go to page",
-      icon("external", 14)
-   ])
-   const error = h("div", { class: "error", hidden: true })
-   const element = h("div", { class: "thread" }, [
-      h("div", { class: "thread-header" }, [
-         iconButton("back", "Back to list", () => handlers.showList()),
-         title,
-         status,
-         h("span", { class: "spacer" }),
-         copyButton
-      ]),
-      banner,
-      shot,
-      messages,
-      h("div", { class: "thread-footer" }, [
-         textarea,
-         h("div", { class: "markdown-hint" }, ["Markdown supported"]),
-         error,
-         h("div", { class: "thread-actions" }, [
-            statusButton,
-            pageLink,
-            h("span", { class: "spacer" }),
-            replyButton
-         ])
-      ])
-   ])
-   let detail: SquawkDetail | null = null
-   let screenshotUrl: string | null = null
-   let disposed = false
-
-   async function run(button: HTMLButtonElement, action: () => Promise<void>): Promise<void> {
-      if (button.disabled) return
-      button.disabled = true
-      error.hidden = true
-      try {
-         await action()
-      } catch (failure) {
-         error.textContent = failure instanceof Error ? failure.message : "Something went wrong"
-         error.hidden = false
-      } finally {
-         button.disabled = false
-      }
-   }
-
-   replyButton.addEventListener("click", () => {
-      const body = textarea.value.trim()
-      if (!body || !detail) return
-      void run(replyButton, async () => {
-         await handlers.reply(squawkId, body)
-         textarea.value = ""
-         textarea.dispatchEvent(new Event("input"))
-      })
-   })
-   textarea.addEventListener("keydown", event => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) replyButton.click()
-   })
-   statusButton.addEventListener("click", () => {
-      if (!detail) return
-      const next: SquawkStatus = detail.status === "open" ? "resolved" : "open"
-      void run(statusButton, () => handlers.setStatus(squawkId, next))
-   })
-
-   function openLightbox(): void {
-      if (!screenshotUrl) return
-      const lightbox = h("div", { class: "lightbox", role: "dialog", "aria-label": "Screenshot" })
-      const close = (): void => {
-         lightbox.remove()
-         window.removeEventListener("keydown", onKey, true)
-      }
-      const onKey = (event: KeyboardEvent): void => {
-         if (event.key !== "Escape") return
-         event.stopPropagation()
-         close()
-      }
-      lightbox.append(
-         h("img", { src: screenshotUrl, alt: "Screenshot" }),
-         iconButton("close", "Close", close)
-      )
-      lightbox.addEventListener("click", close)
-      window.addEventListener("keydown", onKey, true)
-      const root = element.getRootNode()
-      ;(root instanceof ShadowRoot ? root : document.body).append(lightbox)
-   }
-
-   function loadScreenshot(next: SquawkDetail): void {
-      if (!next.screenshot) return
-      handlers.loadScreenshot(next.screenshot.url).then(
-         blob => {
-            if (disposed) return
-            screenshotUrl = URL.createObjectURL(blob)
-            const image = h("img", { src: screenshotUrl, alt: "Screenshot" })
-            shot.replaceChildren(image, h("span", { class: "expand" }, [icon("expand", 14)]))
-            const marker = screenshotMarker(next)
-            if (marker) shot.append(marker)
-            shot.hidden = false
-         },
-         () => {
-            if (disposed) return
-            shot.replaceChildren(h("span", { class: "muted" }, ["Screenshot unavailable."]))
-            shot.hidden = false
-         }
-      )
-   }
-   shot.addEventListener("click", openLightbox)
-
-   return {
-      squawkId,
-      element,
-      update(state) {
-         const next = state.thread?.id === squawkId ? state.thread : null
-         if (!next || next === detail) return
-         if (!detail) loadScreenshot(next)
-         detail = next
-         title.textContent = `#${next.number}`
-         status.textContent = next.status === "open" ? "Open" : "Resolved"
-         status.className = `chip status is-${next.status}`
-         statusButton.replaceChildren(
-            icon(next.status === "open" ? "check" : "reopen", 14),
-            next.status === "open" ? "Resolve" : "Reopen"
-         )
-         banner.hidden = next.status !== "resolved"
-         if (next.status === "resolved") {
-            banner.replaceChildren(
-               icon("check", 14),
-               h("span", {}, [
-                  `Resolved by ${next.resolvedBy ? authorName(next.resolvedBy) : "someone"}`
-               ]),
-               next.resolvedAt
-                  ? h("span", { class: "muted" }, [`· ${relativeTime(next.resolvedAt)}`])
-                  : ""
-            )
-         }
-         const pageUrl = next.page !== state.pageKey ? safeHttpUrl(next.meta.url) : null
-         pageLink.hidden = pageUrl === null
-         if (pageUrl === null) pageLink.removeAttribute("href")
-         else pageLink.setAttribute("href", pageUrl)
-         messages.replaceChildren(...threadMessages(next))
-      },
-      dispose() {
-         disposed = true
-         if (screenshotUrl) URL.revokeObjectURL(screenshotUrl)
-      }
-   }
-}
-
-/** Marker on the stored screenshot at the pinned point; the image keeps its own aspect ratio. */
-function screenshotMarker(detail: SquawkDetail): HTMLElement | null {
-   const anchor = detail.anchor
-   if (!anchor) return null
-   const clickX = anchor.elementBox.x + anchor.rect.x * anchor.elementBox.width
-   const clickY = anchor.elementBox.y + anchor.rect.y * anchor.elementBox.height
-   const marker = h("span", { class: "marker" })
-   marker.style.left = `${(clickX / anchor.viewport.width) * 100}%`
-   marker.style.top = `${(clickY / anchor.viewport.height) * 100}%`
-   return marker
-}
-
-function threadSkeleton(): HTMLElement[] {
-   return Array.from({ length: 2 }, (_, index) => {
-      const head = h("div", { class: "skeleton-bar" })
-      head.style.width = "40%"
-      head.style.height = "8px"
-      const line = h("div", { class: "skeleton-bar" })
-      line.style.width = index === 0 ? "90%" : "60%"
-      return h("div", { class: "skeleton", "aria-hidden": "true" }, [
-         h("span", { class: "avatar" }),
-         h("div", { class: "skeleton-text" }, [head, line])
-      ])
-   })
-}
-
-/** Only http(s) URLs may become links; `meta.url` is reporter-supplied and could be anything. */
-function safeHttpUrl(value: string | undefined): string | null {
-   if (!value) return null
-   try {
-      const url = new URL(value)
-      return url.protocol === "http:" || url.protocol === "https:" ? url.href : null
-   } catch {
-      return null
-   }
-}
-
-/** The squawk body followed by its replies. */
-function threadMessages(detail: SquawkDetail): HTMLElement[] {
-   return [
-      message(detail.author, detail.createdAt, detail.body),
-      ...detail.comments.map(comment => message(comment.author, comment.createdAt, comment.body))
-   ]
-}
-
-function message(author: Author, createdAt: string, body: string): HTMLElement {
-   const name = author.kind === "agent" ? author.name : author.name || author.email
-   const content = h("div", { class: "message-body markdown" })
-   // renderMarkdown escapes all text and only emits its own fixed set of tags.
-   content.innerHTML = renderMarkdown(body)
-   return h("div", { class: "message" }, [
-      avatar(author, 24),
-      h("div", { class: "message-text" }, [
-         h("div", { class: "message-head" }, [
-            h("span", { class: "name" }, [name]),
-            author.kind === "agent" && h("span", { class: "chip is-agent" }, ["agent"]),
-            h("span", { class: "muted" }, [relativeTime(createdAt)])
-         ]),
-         content
-      ])
-   ])
 }

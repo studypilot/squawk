@@ -3,6 +3,7 @@ import { markdownPreview } from "@squawk/shared"
 import { resolveAnchor } from "../anchor/resolve"
 import { avatar, h, icon } from "./dom"
 import { authorName, relativeTime } from "./format"
+import type { Box } from "./placement"
 
 export interface PinsHandlers {
    select(squawkId: string): void
@@ -18,8 +19,14 @@ export interface PinsLayer {
    show(squawks: Squawk[]): void
    /** Re-resolves the current anchors, e.g. after DOM mutations. */
    refresh(): void
-   /** Highlights the pin of the open thread. */
+   /** Raises the pin of the open thread. */
    select(squawkId: string | null): void
+   /** Highlights a pin while its list row is hovered. */
+   highlight(squawkId: string | null): void
+   /** Viewport box of a shown pin, or null when it is not on the page. */
+   locate(squawkId: string): Box | null
+   /** Scrolls the page so the pin is in view, unless it already is. */
+   reveal(squawkId: string): void
 }
 
 interface PinEntry {
@@ -28,16 +35,18 @@ interface PinEntry {
    button: HTMLButtonElement
 }
 
+const PIN_SIZE = 24
 const TIP_WIDTH = 240
 const TIP_GAP = 10
 const VIEWPORT_MARGIN = 8
 
 /** Numbered pins on the page, kept in place on scroll and resize, with a hover card. */
 export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
-   const tip = h("div", { class: "pin-tip" })
+   const tip = h("div", { class: "pin-tip", "aria-hidden": "true" })
    const element = h("div", { class: "pins" }, [tip])
    let entries: PinEntry[] = []
    let selectedId: string | null = null
+   let highlightedId: string | null = null
    let frame = 0
 
    function resolveEntries(): void {
@@ -66,12 +75,15 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
 
    function showTip(entry: PinEntry): void {
       const { squawk } = entry
+      const draft = squawk.status === "draft"
       tip.replaceChildren(
          avatar(squawk.author, 24),
          h("div", { class: "pin-tip-text" }, [
             h("div", { class: "pin-tip-head" }, [
-               h("span", { class: "name" }, [authorName(squawk.author)]),
-               h("span", { class: "muted" }, [relativeTime(squawk.createdAt)])
+               h("span", { class: "name" }, [draft ? "Your draft" : authorName(squawk.author)]),
+               h("span", { class: "muted" }, [
+                  draft ? "not sent yet" : relativeTime(squawk.createdAt)
+               ])
             ]),
             h("div", { class: "pin-tip-body" }, [markdownPreview(squawk.body)])
          ])
@@ -84,7 +96,6 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
       )
       tip.style.left = `${left}px`
       tip.style.top = ""
-      tip.style.bottom = ""
       tip.classList.add("is-visible")
       const height = tip.offsetHeight
       if (box.top - TIP_GAP - height >= VIEWPORT_MARGIN) {
@@ -98,6 +109,13 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
       tip.classList.remove("is-visible")
    }
 
+   function applyClasses(): void {
+      for (const { squawk, button } of entries) {
+         button.classList.toggle("is-selected", squawk.id === selectedId)
+         button.classList.toggle("is-highlighted", squawk.id === highlightedId)
+      }
+   }
+
    window.addEventListener("scroll", schedulePosition, { capture: true, passive: true })
    window.addEventListener("resize", schedulePosition, { passive: true })
 
@@ -107,14 +125,20 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
          hideTip()
          entries = squawks.map(squawk => {
             const resolved = squawk.status === "resolved"
+            const draft = squawk.status === "draft"
+            const label = draft
+               ? `Draft #${squawk.number}, not sent yet`
+               : `Squawk #${squawk.number} by ${authorName(squawk.author)}`
             const button = h(
                "button",
                {
-                  class: `pin${resolved ? " is-resolved" : ""}`,
+                  class: `pin${resolved ? " is-resolved" : ""}${draft ? " is-draft" : ""}`,
                   type: "button",
-                  title: `#${squawk.number}`,
-                  "aria-label": `Squawk #${squawk.number}`,
-                  onclick: () => handlers.select(squawk.id)
+                  "aria-label": label,
+                  onclick: () => {
+                     hideTip()
+                     handlers.select(squawk.id)
+                  }
                },
                [h("span", {}, [resolved ? icon("check", 12) : String(squawk.number)])]
             )
@@ -128,18 +152,36 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
                hideTip()
                handlers.hover(null)
             })
-            button.classList.toggle("is-selected", squawk.id === selectedId)
             return entry
          })
+         applyClasses()
          element.replaceChildren(...entries.map(entry => entry.button), tip)
          resolveEntries()
       },
       refresh: resolveEntries,
       select(squawkId) {
          selectedId = squawkId
-         for (const entry of entries) {
-            entry.button.classList.toggle("is-selected", entry.squawk.id === squawkId)
-         }
+         applyClasses()
+      },
+      highlight(squawkId) {
+         highlightedId = squawkId
+         applyClasses()
+      },
+      locate(squawkId) {
+         const entry = entries.find(candidate => candidate.squawk.id === squawkId)
+         if (!entry) return null
+         const point = pinPoint(entry.squawk, entry.target)
+         if (!point) return null
+         return { x: point.x, y: point.y - PIN_SIZE, width: PIN_SIZE, height: PIN_SIZE }
+      },
+      reveal(squawkId) {
+         const entry = entries.find(candidate => candidate.squawk.id === squawkId)
+         const point = entry ? pinPoint(entry.squawk, entry.target) : null
+         if (!entry?.target || !point) return
+         const inView = point.y > PIN_SIZE * 2 && point.y < window.innerHeight - PIN_SIZE * 2
+         if (inView) return
+         const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+         entry.target.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" })
       }
    }
 }
