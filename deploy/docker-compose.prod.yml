@@ -1,0 +1,44 @@
+# Squawk on a server: Postgres plus the prebuilt image from GitHub Container Registry.
+#   cp .env.example .env   # set PUBLIC_URL, SESSION_SECRET, OIDC_*, POSTGRES_PASSWORD
+#   docker compose -f docker-compose.prod.yml up -d
+# Squawk listens on 127.0.0.1:3000 for a reverse proxy on the same host. For automatic HTTPS
+# add the Caddy override: -f docker-compose.prod.yml -f docker-compose.caddy.yml
+name: squawk
+
+services:
+   db:
+      image: postgres:17-alpine
+      environment:
+         POSTGRES_USER: squawk
+         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+         POSTGRES_DB: squawk
+      volumes:
+         - squawk-db:/var/lib/postgresql/data
+      healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U squawk -d squawk"]
+         interval: 5s
+         timeout: 3s
+         retries: 10
+      restart: always
+
+   server:
+      # `latest` follows main. Pin a `prod-<date>.<time>` or commit tag to control upgrades.
+      image: ghcr.io/studypilot/squawk:latest
+      env_file:
+         - path: .env
+           required: true
+      environment:
+         DATABASE_URL: postgres://squawk:${POSTGRES_PASSWORD}@db:5432/squawk
+         DATA_DIR: /data
+      volumes:
+         - squawk-data:/data
+      ports:
+         - "127.0.0.1:3000:3000"
+      depends_on:
+         db:
+            condition: service_healthy
+      restart: always
+
+volumes:
+   squawk-db:
+   squawk-data:

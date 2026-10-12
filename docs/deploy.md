@@ -4,19 +4,54 @@ Squawk ships as one Docker image. It needs a Postgres database (16 or newer, 17 
 a writable directory for screenshots. The server applies database migrations itself on every
 start, before it accepts requests.
 
-## Quick start with Docker Compose
+## Docker Compose
+
+`deploy/` has three compose files. All of them read `deploy/.env` (copy it from
+`deploy/.env.example`). `docker-compose.caddy.yml` needs Docker Compose 2.23.1 or newer.
+
+| File                       | For                                                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker-compose.yml`       | Trying Squawk and development. Builds the image from this repository; server on `127.0.0.1:3000`, Postgres on `127.0.0.1:5544`.          |
+| `docker-compose.prod.yml`  | Servers. The prebuilt image, Postgres with a password from `.env` and no published port, named volumes, `restart: always`.               |
+| `docker-compose.caddy.yml` | Optional override for `docker-compose.prod.yml`: Caddy in front with automatic HTTPS for `SQUAWK_DOMAIN` and a 10 MB request body limit. |
+
+### Trying it locally
 
 ```bash
-cp deploy/.env.example deploy/.env      # set SESSION_SECRET, PUBLIC_URL, OIDC_*
+cp deploy/.env.example deploy/.env      # set SESSION_SECRET; for a trial without OIDC also
+                                        # NODE_ENV=development and SQUAWK_DEV_USER=you@example.com
 docker compose -f deploy/docker-compose.yml up --build -d
 open http://localhost:3000
 ```
 
-The compose file starts `postgres:17-alpine` and the server. Postgres is also published on
-`127.0.0.1:5544` for local tools (`psql postgres://squawk:squawk@127.0.0.1:5544/squawk`); 5544 avoids
-clashing with a Postgres already listening on 5432.
+Postgres is published on `127.0.0.1:5544` for local tools
+(`psql postgres://squawk:squawk@127.0.0.1:5544/squawk`); 5544 avoids clashing with a Postgres
+already listening on 5432. The server is published on the loopback interface only, because with
+`SQUAWK_DEV_USER` anyone reaching it acts as that user.
 
-To build the image alone, run from the repository root:
+### On a server
+
+```bash
+cd deploy
+cp .env.example .env    # PUBLIC_URL, SESSION_SECRET, OIDC_*, POSTGRES_PASSWORD (and SQUAWK_DOMAIN)
+
+# Behind a reverse proxy on the same host (Squawk listens on 127.0.0.1:3000):
+docker compose -f docker-compose.prod.yml up -d
+
+# Or with Caddy terminating TLS on ports 80 and 443:
+docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d
+```
+
+The compose files plus `.env` are all the host needs; a clone of the repository is not required.
+`POSTGRES_PASSWORD` is applied only when the database volume is first created. Use hex
+(`openssl rand -hex 24`), since it is also embedded in the connection URL.
+
+### Image
+
+`ghcr.io/studypilot/squawk` is built from `deploy/Dockerfile` on every push to `main` and tagged
+`latest`, `prod-<yyyy-mm-dd>.<hhmm>` (Europe/Berlin time) and the commit SHA. Pin one of the latter
+two to control upgrades. The image is currently built for `linux/arm64` only; on `x86_64` hosts
+build it yourself and change `image:` in `docker-compose.prod.yml`. From the repository root:
 
 ```bash
 docker build -f deploy/Dockerfile -t squawk .
@@ -59,7 +94,7 @@ as a single replica: rate limits for device logins live in memory and the volume
 
 Any other OpenID Connect provider works the same way: set `OIDC_ISSUER` to its issuer URL and
 register the same redirect URI. The provider must return an `email` claim for the scopes
-`openid email profile`; addresses marked `email_verified: false` are refused.
+`openid email profile` together with `email_verified: true`; other addresses are refused.
 
 Overlays and the CLI never use the browser session directly; they hold a 30-day login token,
 listed and revocable on the inbox token page. The overlay gets it through a popup: "Sign in" opens
@@ -74,6 +109,16 @@ the user confirms a code on `<PUBLIC_URL>/device`.
 `GET /healthz` answers `{"ok":true}` when the database responds and `DATA_DIR` is writable, and
 503 otherwise. The image has a Docker `HEALTHCHECK` on it; use the same path for Kubernetes
 readiness and liveness probes.
+
+## Kubernetes
+
+There is no Helm chart; plain manifests are enough. Run one replica of the image (strategy
+`Recreate`, see [Volume](#volume)), container port 3000, user 1000 (`fsGroup: 1000` makes the
+volume writable). Take the environment from a `Secret`, mount a `PersistentVolumeClaim` at `/data`,
+and point readiness and liveness probes at `GET /healthz` on port 3000. Postgres comes from
+wherever the cluster gets databases (an operator, a managed service). Give the ingress TLS and a
+request body limit of at least 9 MB (`nginx.ingress.kubernetes.io/proxy-body-size: 10m` for
+ingress-nginx). Migrations run inside the server on start; no job is needed.
 
 ## Reverse proxy
 

@@ -1,0 +1,34 @@
+# Optional override: Caddy in front of Squawk with automatic HTTPS (Let's Encrypt).
+#   docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d
+# Needs SQUAWK_DOMAIN in .env, a DNS record pointing at this host and ports 80 and 443 open.
+services:
+   caddy:
+      image: caddy:2-alpine
+      ports:
+         - "80:80"
+         - "443:443"
+         - "443:443/udp"
+      configs:
+         - source: caddyfile
+           target: /etc/caddy/Caddyfile
+      volumes:
+         - caddy-data:/data
+         - caddy-config:/config
+      depends_on:
+         - server
+      restart: always
+
+configs:
+   caddyfile:
+      # Screenshot uploads are up to about 8.5 MB.
+      content: |
+         ${SQUAWK_DOMAIN:?Set SQUAWK_DOMAIN in .env} {
+            request_body {
+               max_size 10MB
+            }
+            reverse_proxy server:3000
+         }
+
+volumes:
+   caddy-data:
+   caddy-config:

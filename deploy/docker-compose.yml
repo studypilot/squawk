@@ -1,4 +1,5 @@
-# Local Squawk: Postgres plus the server image built from this repository.
+# Local Squawk: Postgres plus the server image built from this repository. For trying Squawk
+# out and for development; servers use docker-compose.prod.yml (see docs/deploy.md).
 #   cp deploy/.env.example deploy/.env   # then edit
 #   docker compose -f deploy/docker-compose.yml up --build
 name: squawk
@@ -34,8 +35,9 @@ services:
          DATA_DIR: /data
       volumes:
          - squawk-data:/data
+      # Loopback only: with SQUAWK_DEV_USER set, anyone who reaches this port acts as that user.
       ports:
-         - "3000:3000"
+         - "127.0.0.1:3000:3000"
       depends_on:
          db:
             condition: service_healthy
