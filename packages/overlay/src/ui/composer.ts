@@ -78,6 +78,7 @@ export function createComposer(options: ComposerOptions): HTMLElement {
       arrow,
       ...preview(anchor, screenshot),
       textarea,
+      h("div", { class: "markdown-hint" }, ["Markdown supported"]),
       error,
       h("div", { class: "composer-footer" }, [
          h(

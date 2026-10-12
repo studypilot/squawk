@@ -27,11 +27,6 @@ export function formatDateTime(isoDate: string): string {
    return new Date(isoDate).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })
 }
 
-export function firstLine(text: string): string {
-   const line = text.split("\n").find(candidate => candidate.trim() !== "")
-   return line === undefined ? "" : line.trim()
-}
-
 export function truncate(text: string, maxLength: number): string {
    if (text.length <= maxLength) {
       return text

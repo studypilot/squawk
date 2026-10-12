@@ -72,3 +72,24 @@ describe("thread page link", () => {
       expect(renderThread(undefined).hidden).toBe(true)
    })
 })
+
+describe("Markdown bodies", () => {
+   const body = "# Title\n\n**Bold** <img src=x onerror=alert(1)> [x](javascript:alert(1))"
+
+   it("renders thread messages as escaped Markdown", () => {
+      const panel = createPanel(handlers())
+      panel.render(threadState({ ...squawkFixture({ body }), comments: [] }))
+      const message = panel.element.querySelector(".message-body.markdown")
+      expect(message?.querySelector("h1")?.textContent).toBe("Title")
+      expect(message?.querySelector("strong")?.textContent).toBe("Bold")
+      expect(message?.querySelector("img, a")).toBeNull()
+      expect(message?.textContent).toContain("<img src=x onerror=alert(1)>")
+   })
+
+   it("shows the list row preview as plain text", () => {
+      const panel = createPanel(handlers())
+      const squawk = squawkFixture({ body })
+      panel.render({ ...threadState({ ...squawk, comments: [] }), panel: "list", threadId: null })
+      expect(panel.element.querySelector(".item-body")?.textContent).toBe("Title")
+   })
+})

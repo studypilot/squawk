@@ -1,11 +1,11 @@
-import { LIMITS } from "@squawk/shared"
+import { LIMITS, markdownPreview, renderMarkdown } from "@squawk/shared"
 import type { Author, Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
 import type { LoginState } from "../auth"
 import type { ListFilter, OverlayState } from "../state"
 import { copyText } from "./clipboard"
 import { autoGrow, avatar, h, icon, planeMark } from "./dom"
 import type { IconName } from "./dom"
-import { authorName, firstLine, relativeTime, renderBody } from "./format"
+import { authorName, relativeTime } from "./format"
 
 export interface PanelHandlers {
    close(): void
@@ -152,7 +152,7 @@ export function createPanel(handlers: PanelHandlers): Panel {
                      {
                         class: `pin${squawk.status === "resolved" ? " is-resolved" : ""}`,
                         type: "button",
-                        title: `#${squawk.number}: ${firstLine(squawk.body)}`,
+                        title: `#${squawk.number}: ${markdownPreview(squawk.body)}`,
                         onclick: () => handlers.openThread(squawk.id)
                      },
                      [h("span", {}, [String(squawk.number)])]
@@ -355,7 +355,7 @@ function listItem(squawk: Squawk, onThisPage: boolean, handlers: PanelHandlers):
       [
          avatar(squawk.author, 24),
          h("div", { class: "item-text" }, [
-            h("div", { class: "item-body" }, [firstLine(squawk.body)]),
+            h("div", { class: "item-body" }, [markdownPreview(squawk.body)]),
             h("div", { class: "item-meta" }, [
                h("span", { class: "number" }, [`#${squawk.number}`]),
                h("span", {}, ["·"]),
@@ -450,6 +450,7 @@ function createThreadView(squawkId: string, handlers: PanelHandlers): ThreadView
       messages,
       h("div", { class: "thread-footer" }, [
          textarea,
+         h("div", { class: "markdown-hint" }, ["Markdown supported"]),
          error,
          h("div", { class: "thread-actions" }, [
             statusButton,
@@ -625,6 +626,9 @@ function threadMessages(detail: SquawkDetail): HTMLElement[] {
 
 function message(author: Author, createdAt: string, body: string): HTMLElement {
    const name = author.kind === "agent" ? author.name : author.name || author.email
+   const content = h("div", { class: "message-body markdown" })
+   // renderMarkdown escapes all text and only emits its own fixed set of tags.
+   content.innerHTML = renderMarkdown(body)
    return h("div", { class: "message" }, [
       avatar(author, 24),
       h("div", { class: "message-text" }, [
@@ -633,7 +637,7 @@ function message(author: Author, createdAt: string, body: string): HTMLElement {
             author.kind === "agent" && h("span", { class: "chip is-agent" }, ["agent"]),
             h("span", { class: "muted" }, [relativeTime(createdAt)])
          ]),
-         h("div", { class: "message-body" }, [renderBody(body)])
+         content
       ])
    ])
 }

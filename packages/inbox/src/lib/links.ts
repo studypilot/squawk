@@ -35,38 +35,3 @@ export function siteLink(siteKey: string): string {
 export function squawkLink(squawkId: string): string {
    return `/squawks/${encodeURIComponent(squawkId)}`
 }
-
-export type TextSegment =
-   { kind: "text"; text: string } | { kind: "link"; text: string; href: string }
-
-const URL_PATTERN = /https?:\/\/[^\s<>"]+/g
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
-
-/** Splits plain text into text and link segments. Trailing punctuation stays outside links. */
-export function splitTextIntoLinks(text: string): TextSegment[] {
-   const segments: TextSegment[] = []
-   let textStart = 0
-   for (const match of text.matchAll(URL_PATTERN)) {
-      const url = match[0].replace(TRAILING_PUNCTUATION, "")
-      if (!isSafeHttpUrl(url)) {
-         continue
-      }
-      if (match.index > textStart) {
-         segments.push({ kind: "text", text: text.slice(textStart, match.index) })
-      }
-      segments.push({ kind: "link", text: url, href: url })
-      textStart = match.index + url.length
-   }
-   if (textStart < text.length) {
-      segments.push({ kind: "text", text: text.slice(textStart) })
-   }
-   return segments
-}
-
-/** Paragraphs are separated by blank lines; single line breaks stay inside a paragraph. */
-export function splitParagraphs(text: string): string[] {
-   return text
-      .split(/\n[ \t]*\n/)
-      .map(paragraph => paragraph.replace(/^\n+|\n+$/g, ""))
-      .filter(paragraph => paragraph.trim() !== "")
-}

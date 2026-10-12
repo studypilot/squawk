@@ -1,4 +1,4 @@
-import { LIMITS } from "@squawk/shared"
+import { LIMITS, markdownPreview, renderMarkdown } from "@squawk/shared"
 import type { Anchor, Author as AuthorValue, SquawkDetail } from "@squawk/shared"
 import { useEffect, useRef, useState } from "react"
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
@@ -23,14 +23,8 @@ import { ScreenshotWithPin } from "../components/screenshot-with-pin"
 import { Skeleton } from "../components/skeleton"
 import { StatusChip } from "../components/status-chip"
 import { useToast } from "../components/toast"
-import { firstLine, formatDateTime, truncate } from "../lib/format"
-import {
-   buildSquawkPageUrl,
-   isSafeHttpUrl,
-   siteLink,
-   splitParagraphs,
-   splitTextIntoLinks
-} from "../lib/links"
+import { formatDateTime, truncate } from "../lib/format"
+import { buildSquawkPageUrl, isSafeHttpUrl, siteLink } from "../lib/links"
 import { describeUserAgent } from "../lib/user-agent"
 
 export function SquawkPage() {
@@ -71,7 +65,7 @@ function SquawkSkeleton() {
 
 function SquawkView({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: () => void }) {
    const label = `${squawk.siteKey} #${squawk.number}`
-   const title = truncate(firstLine(squawk.body), 80)
+   const title = truncate(markdownPreview(squawk.body), 80)
 
    return (
       <>
@@ -165,33 +159,13 @@ function Message({
    )
 }
 
+/** renderMarkdown escapes all text and only emits its own fixed set of tags. */
 function BodyText({ text }: { text: string }) {
    return (
-      <div className="body-text">
-         {splitParagraphs(text).map((paragraph, paragraphIndex) => (
-            <p key={paragraphIndex}>
-               {paragraph.split("\n").map((line, lineIndex) => (
-                  <span key={lineIndex}>
-                     {lineIndex > 0 && <br />}
-                     {splitTextIntoLinks(line).map((segment, segmentIndex) =>
-                        segment.kind === "link" ? (
-                           <a
-                              key={segmentIndex}
-                              href={segment.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                           >
-                              {segment.text}
-                           </a>
-                        ) : (
-                           segment.text
-                        )
-                     )}
-                  </span>
-               ))}
-            </p>
-         ))}
-      </div>
+      <div
+         className="body-text markdown"
+         dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+      />
    )
 }
 
@@ -287,6 +261,7 @@ function Composer({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: () =
             onChange={event => setBody(event.target.value)}
             onKeyDown={handleKeyDown}
          />
+         <p className="markdown-hint">Markdown supported</p>
          <div className="composer-actions">
             <button
                type="button"

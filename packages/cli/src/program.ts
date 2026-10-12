@@ -117,7 +117,7 @@ export function createProgram(context: CliContext): Command {
       .command("reply")
       .description('reply to a squawk; text as argument, with --file, or "-" for stdin')
       .argument("<ref>", REF_HELP)
-      .argument("[text]", 'reply text, or "-" to read stdin')
+      .argument("[text]", 'reply text (Markdown), or "-" to read stdin')
       .addOption(siteOption)
       .option("--file <path>", "read the reply from a file")
       .action(withContext(replyCommand))
@@ -127,7 +127,7 @@ export function createProgram(context: CliContext): Command {
       .description("mark a squawk resolved, optionally with a final comment")
       .argument("<ref>", REF_HELP)
       .addOption(siteOption)
-      .option("--comment <text>", "comment to post before resolving")
+      .option("--comment <text>", "comment (Markdown) to post before resolving")
       .action(withContext(resolveCommand))
 
    program

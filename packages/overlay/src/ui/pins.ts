@@ -1,7 +1,8 @@
 import type { Squawk } from "@squawk/shared"
+import { markdownPreview } from "@squawk/shared"
 import { resolveAnchor } from "../anchor/resolve"
 import { avatar, h, icon } from "./dom"
-import { authorName, firstLine, relativeTime } from "./format"
+import { authorName, relativeTime } from "./format"
 
 export interface PinsHandlers {
    select(squawkId: string): void
@@ -72,7 +73,7 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
                h("span", { class: "name" }, [authorName(squawk.author)]),
                h("span", { class: "muted" }, [relativeTime(squawk.createdAt)])
             ]),
-            h("div", { class: "pin-tip-body" }, [firstLine(squawk.body)])
+            h("div", { class: "pin-tip-body" }, [markdownPreview(squawk.body)])
          ])
       )
       const box = entry.button.getBoundingClientRect()

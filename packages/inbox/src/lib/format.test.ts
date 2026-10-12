@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { firstLine, formatRelativeTime, formatUserCode, isCompleteUserCode } from "./format"
+import { formatRelativeTime, formatUserCode, isCompleteUserCode } from "./format"
 
 describe("formatUserCode", () => {
    it("upper-cases and inserts the dash after four characters", () => {
@@ -34,11 +34,5 @@ describe("formatRelativeTime", () => {
       expect(formatRelativeTime("2026-10-10T11:55:00.000Z", now)).toBe("5 minutes ago")
       expect(formatRelativeTime("2026-10-07T12:00:00.000Z", now)).toBe("3 days ago")
       expect(formatRelativeTime("2026-10-12T12:00:00.000Z", now)).toBe("in 2 days")
-   })
-})
-
-describe("firstLine", () => {
-   it("returns the first non-empty line", () => {
-      expect(firstLine("\n  Button is cut off  \nmore")).toBe("Button is cut off")
    })
 })

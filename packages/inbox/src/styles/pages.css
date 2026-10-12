@@ -741,12 +741,13 @@ tr:hover .inline-edit-trigger,
    font-weight: 600;
 }
 
-.body-text {
-   overflow-wrap: anywhere;
+/* Code sits on the reply bubble's surface-2, so it steps one shade further. */
+.message-reply .markdown :where(code, pre) {
+   background: var(--sq-surface-3);
 }
 
-.body-text p + p {
-   margin-top: 10px;
+.message-reply .markdown pre code {
+   background: none;
 }
 
 .resolved-banner {

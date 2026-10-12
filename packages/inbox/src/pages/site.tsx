@@ -1,3 +1,4 @@
+import { markdownPreview } from "@squawk/shared"
 import type { Site, Squawk } from "@squawk/shared"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
@@ -15,7 +16,7 @@ import { Segmented } from "../components/segmented"
 import { Skeleton, SkeletonRows } from "../components/skeleton"
 import { StatusChip } from "../components/status-chip"
 import { useToast } from "../components/toast"
-import { firstLine, truncate } from "../lib/format"
+import { truncate } from "../lib/format"
 import { squawkLink } from "../lib/links"
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: SquawkStatusFilter; label: string }> = [
@@ -352,7 +353,7 @@ function SquawkRow({
       >
          <ScreenshotThumbnail screenshot={squawk.screenshot} anchor={squawk.anchor} />
          <span className="squawk-summary">
-            <span className="squawk-body">{truncate(firstLine(squawk.body), 140)}</span>
+            <span className="squawk-body">{truncate(markdownPreview(squawk.body), 140)}</span>
             <span className="squawk-meta">
                <Author author={squawk.author} showAvatar />
                <span className="squawk-meta-dot">·</span>
