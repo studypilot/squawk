@@ -80,9 +80,9 @@ Rules for the loop:
 - Never leave a squawk marked as being worked on when you stop. Before you end the session or
   stop the loop, run `squawk work 'KEY#N' --done` for every squawk you claimed and did not reply
   to or resolve.
-- Your replies through a CLI login show up in the inbox and overlay as "Agent for <Name>", not as
-  the user, so reviewers can tell your answers from the user's own. Agent tokens
-  (`SQUAWK_TOKEN`) show the token name instead.
+- Your replies through a CLI login show up in the inbox and overlay as "Agent · for <Name>" (in
+  the CLI as `Agent for <Name>`), not as the user, so reviewers can tell your answers from the
+  user's own. Agent tokens (`SQUAWK_TOKEN`) show the token name instead.
 
 ## Rules
 
