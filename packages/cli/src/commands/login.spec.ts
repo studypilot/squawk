@@ -22,14 +22,17 @@ const deviceStart = {
 
 /**
  * Advances fake time until the command finishes. Real file I/O happens in between, so each step
- * also yields to the event loop.
+ * also yields to the event loop. The loop is bounded by real time, not by a step count: on a slow
+ * runner the config read can take longer than a fixed number of event-loop turns, and once the
+ * loop stops nothing advances the fake clock for the command's poll timer.
  */
 async function finish(promise: Promise<number>): Promise<number> {
    let settled = false
    void promise.finally(() => {
       settled = true
    })
-   for (let step = 0; step < 200 && !settled; step++) {
+   const deadline = Date.now() + 4000
+   while (!settled && Date.now() < deadline) {
       await vi.advanceTimersByTimeAsync(1000)
       await new Promise(resolve => setImmediate(resolve))
    }
