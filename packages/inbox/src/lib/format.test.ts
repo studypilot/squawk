@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatRelativeTime, formatUserCode, isCompleteUserCode } from "./format"
+import { formatDuration, formatRelativeTime, formatUserCode, isCompleteUserCode } from "./format"
 
 describe("formatUserCode", () => {
    it("upper-cases and inserts the dash after four characters", () => {
@@ -34,5 +34,15 @@ describe("formatRelativeTime", () => {
       expect(formatRelativeTime("2026-10-10T11:55:00.000Z", now)).toBe("5 minutes ago")
       expect(formatRelativeTime("2026-10-07T12:00:00.000Z", now)).toBe("3 days ago")
       expect(formatRelativeTime("2026-10-12T12:00:00.000Z", now)).toBe("in 2 days")
+   })
+})
+
+describe("formatDuration", () => {
+   it("shows minutes, hours and days without a suffix", () => {
+      const now = new Date("2026-10-10T12:00:00.000Z")
+      expect(formatDuration("2026-10-10T11:59:30.000Z", now)).toBe("<1 min")
+      expect(formatDuration("2026-10-10T11:56:00.000Z", now)).toBe("4 min")
+      expect(formatDuration("2026-10-10T09:30:00.000Z", now)).toBe("2 h")
+      expect(formatDuration("2026-10-07T12:00:00.000Z", now)).toBe("3 d")
    })
 })

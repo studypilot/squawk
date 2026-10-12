@@ -2,7 +2,7 @@ import { markdownPreview } from "@squawk/shared"
 import type { Site, Squawk } from "@squawk/shared"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
-import { listSites, listSquawks, updateSquawkStatus } from "../api/client"
+import { listSites, listSquawks, setSquawkRead, updateSquawkStatus } from "../api/client"
 import type { SquawkStatusFilter } from "../api/client"
 import { usePagedQuery, useQuery } from "../api/hooks"
 import { Author } from "../components/author"
@@ -16,6 +16,7 @@ import { Segmented } from "../components/segmented"
 import { Skeleton, SkeletonRows } from "../components/skeleton"
 import { StatusChip } from "../components/status-chip"
 import { useToast } from "../components/toast"
+import { WorkingIndicator } from "../components/working"
 import { truncate } from "../lib/format"
 import { squawkLink } from "../lib/links"
 
@@ -44,6 +45,7 @@ export function SitePage() {
    const siteKey = useParams().key ?? ""
    const [searchParams, setSearchParams] = useSearchParams()
    const status = parseStatus(searchParams.get("status"))
+   const unreadOnly = searchParams.get("unread") === "1"
    const [page, setPage] = useState("")
    const [search, setSearch] = useState("")
    const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -54,8 +56,8 @@ export function SitePage() {
    const sites = useQuery("sites", listSites)
    const site: Site | undefined = sites.data?.find(candidate => candidate.key === siteKey)
 
-   const squawks = usePagedQuery(`${siteKey}\n${status}`, cursor =>
-      listSquawks({ site: siteKey, status, cursor })
+   const squawks = usePagedQuery(`${siteKey}\n${status}\n${unreadOnly}`, cursor =>
+      listSquawks({ site: siteKey, status, cursor, unread: unreadOnly })
    )
 
    const pages = useMemo(
@@ -81,6 +83,16 @@ export function SitePage() {
       setSearchParams(next)
    }
 
+   function toggleUnreadOnly() {
+      const next = new URLSearchParams(searchParams)
+      if (unreadOnly) {
+         next.delete("unread")
+      } else {
+         next.set("unread", "1")
+      }
+      setSearchParams(next)
+   }
+
    const toggleStatus = useCallback(
       async (squawk: Squawk) => {
          const nextStatus = squawk.status === "open" ? "resolved" : "open"
@@ -91,6 +103,20 @@ export function SitePage() {
             sites.reload()
          } catch (caught) {
             showToast(caught instanceof Error ? caught.message : "Updating the status failed.")
+         }
+      },
+      [showToast, squawks, sites]
+   )
+
+   const toggleRead = useCallback(
+      async (squawk: Squawk) => {
+         try {
+            await setSquawkRead(squawk.id, squawk.unread)
+            showToast(`Marked #${squawk.number} as ${squawk.unread ? "read" : "unread"}`)
+            squawks.reload()
+            sites.reload()
+         } catch (caught) {
+            showToast(caught instanceof Error ? caught.message : "Updating the read state failed.")
          }
       },
       [showToast, squawks, sites]
@@ -143,11 +169,16 @@ export function SitePage() {
          if (event.key === "r") {
             event.preventDefault()
             void toggleStatus(selected)
+            return
+         }
+         if (event.key === "u") {
+            event.preventDefault()
+            void toggleRead(selected)
          }
       }
       document.addEventListener("keydown", onKeyDown)
       return () => document.removeEventListener("keydown", onKeyDown)
-   }, [visible, selectedIndex, navigate, toggleStatus])
+   }, [visible, selectedIndex, navigate, toggleStatus, toggleRead])
 
    useEffect(() => {
       if (selectedIndex === -1) {
@@ -192,6 +223,18 @@ export function SitePage() {
                onChange={changeStatus}
                label="Status"
             />
+            <button
+               type="button"
+               className={unreadOnly ? "filter-chip filter-chip-active" : "filter-chip"}
+               aria-pressed={unreadOnly}
+               onClick={toggleUnreadOnly}
+            >
+               <span className="unread-dot" aria-hidden="true" />
+               Unread
+               {site !== undefined && site.unreadCount > 0 && (
+                  <span className="filter-chip-count">{site.unreadCount}</span>
+               )}
+            </button>
             <Menu
                closeSignal={page}
                align="start"
@@ -275,18 +318,22 @@ export function SitePage() {
             <EmptyState
                icon={status === "resolved" ? <CheckIcon size={22} /> : <InboxIcon size={22} />}
                title={
-                  status === "all"
-                     ? "No squawks on this site yet"
-                     : status === "open"
-                       ? "No open squawks"
-                       : "Nothing resolved yet"
+                  unreadOnly
+                     ? "All caught up"
+                     : status === "all"
+                       ? "No squawks on this site yet"
+                       : status === "open"
+                         ? "No open squawks"
+                         : "Nothing resolved yet"
                }
                hint={
-                  status === "open"
-                     ? "All clear. New squawks from the overlay land here."
-                     : status === "resolved"
-                       ? "Resolved squawks move here."
-                       : "The first squawk filed on this site opens it here."
+                  unreadOnly
+                     ? "Nothing new since you last looked."
+                     : status === "open"
+                       ? "All clear. New squawks from the overlay land here."
+                       : status === "resolved"
+                         ? "Resolved squawks move here."
+                         : "The first squawk filed on this site opens it here."
                }
             />
          )}
@@ -309,6 +356,7 @@ export function SitePage() {
                   <kbd>k</kbd> move
                   <kbd>↵</kbd> open
                   <kbd>r</kbd> resolve / reopen
+                  <kbd>u</kbd> read / unread
                   <kbd>/</kbd> search
                </p>
             </>
@@ -343,18 +391,31 @@ function SquawkRow({
    showPage: boolean
    onSelect: () => void
 }) {
+   const classNames = ["squawk-row"]
+   if (selected) {
+      classNames.push("squawk-row-selected")
+   }
+   if (squawk.unread) {
+      classNames.push("squawk-row-unread")
+   }
    return (
       <Link
          to={squawkLink(squawk.id)}
-         className={selected ? "squawk-row squawk-row-selected" : "squawk-row"}
+         className={classNames.join(" ")}
          aria-current={selected ? "true" : undefined}
          onMouseEnter={onSelect}
          onFocus={onSelect}
       >
+         {squawk.unread && (
+            <span className="unread-dot squawk-row-dot" title="Unread">
+               <span className="visually-hidden">Unread: </span>
+            </span>
+         )}
          <ScreenshotThumbnail screenshot={squawk.screenshot} anchor={squawk.anchor} />
          <span className="squawk-summary">
             <span className="squawk-body">{truncate(markdownPreview(squawk.body), 140)}</span>
             <span className="squawk-meta">
+               {squawk.working !== null && <WorkingIndicator working={squawk.working} />}
                <Author author={squawk.author} showAvatar />
                <span className="squawk-meta-dot">·</span>
                <RelativeTime value={squawk.createdAt} />

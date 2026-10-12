@@ -83,9 +83,21 @@ function SitesTable({
                {sites.map(site => (
                   <tr key={site.key}>
                      <td>
-                        <Link to={siteLink(site.key)} className="site-key">
-                           {site.key}
-                        </Link>
+                        <span className="site-cell">
+                           <Link to={siteLink(site.key)} className="site-key">
+                              {site.key}
+                           </Link>
+                           {site.unreadCount > 0 && (
+                              <Link
+                                 to={`${siteLink(site.key)}?unread=1`}
+                                 className="unread-badge"
+                                 title={`${site.unreadCount} unread on ${site.key}`}
+                              >
+                                 <span className="unread-dot" aria-hidden="true" />
+                                 {site.unreadCount} unread
+                              </Link>
+                           )}
+                        </span>
                      </td>
                      <td>
                         <DisplayNameEditor site={site} onSaved={onRenamed} />

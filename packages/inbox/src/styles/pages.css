@@ -1315,3 +1315,150 @@ tr:hover .inline-edit-trigger,
       max-width: calc(100vw - 24px);
    }
 }
+
+/* Unread state: a dot like in Figma's comment list, and a bolder title. */
+
+.unread-dot {
+   background: var(--sq-primary);
+   border-radius: 50%;
+   display: inline-block;
+   flex-shrink: 0;
+   height: 8px;
+   width: 8px;
+}
+
+.squawk-row-dot {
+   left: 4px;
+   position: absolute;
+   top: 50%;
+   transform: translateY(-50%);
+}
+
+.squawk-row-unread .squawk-body {
+   font-weight: 650;
+}
+
+.filter-chip {
+   align-items: center;
+   background: var(--sq-surface);
+   border: 1px solid var(--sq-border-strong);
+   border-radius: var(--sq-radius-md);
+   color: var(--sq-text-2);
+   cursor: pointer;
+   display: inline-flex;
+   font-size: 13px;
+   font-weight: 500;
+   gap: 6px;
+   height: 32px;
+   padding: 0 10px;
+   transition:
+      background var(--sq-duration) var(--sq-ease),
+      border-color var(--sq-duration) var(--sq-ease),
+      color var(--sq-duration) var(--sq-ease);
+}
+
+.filter-chip:hover {
+   color: var(--sq-text);
+}
+
+.filter-chip:not(.filter-chip-active) .unread-dot {
+   background: var(--sq-text-3);
+}
+
+.filter-chip-active {
+   background: var(--sq-primary-soft);
+   border-color: var(--sq-primary);
+   color: var(--sq-primary);
+}
+
+.filter-chip-active:hover {
+   color: var(--sq-primary);
+}
+
+.filter-chip-count {
+   font-variant-numeric: tabular-nums;
+   font-weight: 600;
+}
+
+.site-cell {
+   align-items: center;
+   display: inline-flex;
+   flex-wrap: wrap;
+   gap: 8px;
+}
+
+.unread-badge {
+   align-items: center;
+   color: var(--sq-primary);
+   display: inline-flex;
+   font-size: 12px;
+   font-variant-numeric: tabular-nums;
+   font-weight: 600;
+   gap: 5px;
+   white-space: nowrap;
+}
+
+.detail-title-action {
+   margin-left: auto;
+}
+
+/* An agent working on a squawk: a pulsing sparkle in rows, a banner on top of the thread. */
+
+.working-indicator {
+   align-items: center;
+   background: var(--sq-primary-soft);
+   border-radius: var(--sq-radius-md);
+   color: var(--sq-primary);
+   display: inline-flex;
+   flex-shrink: 0;
+   font-size: 11px;
+   font-weight: 600;
+   gap: 4px;
+   height: 18px;
+   padding: 0 6px;
+}
+
+.working-sparkle {
+   animation: working-pulse 1.6s var(--sq-ease) infinite;
+   flex-shrink: 0;
+}
+
+@keyframes working-pulse {
+   0%,
+   100% {
+      opacity: 1;
+      transform: scale(1);
+   }
+
+   50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .working-sparkle {
+      animation: none;
+   }
+}
+
+.working-banner {
+   align-items: center;
+   background: var(--sq-primary-soft);
+   border-radius: var(--sq-radius-md);
+   color: var(--sq-primary);
+   display: flex;
+   font-size: 13px;
+   gap: 8px;
+   padding: 6px 6px 6px 12px;
+}
+
+.working-banner-text {
+   color: var(--sq-text);
+   flex: 1;
+   min-width: 0;
+}
+
+.working-banner-since {
+   color: var(--sq-text-2);
+}

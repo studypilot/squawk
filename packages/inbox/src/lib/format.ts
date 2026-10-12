@@ -23,6 +23,19 @@ export function formatRelativeTime(isoDate: string, now: Date = new Date()): str
    return relativeTimeFormatter.format(Math.round(seconds / 60), "minute")
 }
 
+/** How long something has been going on, without a suffix: "<1 min", "4 min", "2 h", "3 d". */
+export function formatDuration(isoDate: string, now: Date = new Date()): string {
+   const minutes = Math.floor((now.getTime() - new Date(isoDate).getTime()) / 60_000)
+   if (minutes < 1) {
+      return "<1 min"
+   }
+   if (minutes < 60) {
+      return `${minutes} min`
+   }
+   const hours = Math.floor(minutes / 60)
+   return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`
+}
+
 export function formatDateTime(isoDate: string): string {
    return new Date(isoDate).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })
 }

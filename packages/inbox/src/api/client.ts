@@ -32,7 +32,7 @@ interface Schema<T> {
    parse(input: unknown): T
 }
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE"
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
 export class ApiError extends Error {
    readonly status: number
@@ -150,8 +150,13 @@ export function listSquawks(query: {
    site: string
    status: SquawkStatusFilter
    cursor: string | null
+   /** Only squawks with activity the signed-in user has not seen. */
+   unread?: boolean
 }): Promise<ListSquawksResponse> {
    const parameters = new URLSearchParams({ site: query.site, status: query.status })
+   if (query.unread === true) {
+      parameters.set("unread", "true")
+   }
    if (query.cursor !== null) {
       parameters.set("cursor", query.cursor)
    }
@@ -171,6 +176,16 @@ export async function updateSquawkStatus(
    status: SquawkTargetStatus
 ): Promise<void> {
    await send("PATCH", `/api/squawks/${encodeURIComponent(squawkId)}`, { status })
+}
+
+/** Marks the squawk read (`true`) or unread again (`false`) for the signed-in user. */
+export async function setSquawkRead(squawkId: string, read: boolean): Promise<void> {
+   await send(read ? "PUT" : "DELETE", `/api/squawks/${encodeURIComponent(squawkId)}/read`)
+}
+
+/** Clears the "an agent is working on this" mark. */
+export async function clearSquawkWorking(squawkId: string): Promise<void> {
+   await send("DELETE", `/api/squawks/${encodeURIComponent(squawkId)}/working`)
 }
 
 export async function listTokens(): Promise<Token[]> {

@@ -2,8 +2,14 @@ import { LIMITS, markdownPreview, renderMarkdown } from "@squawk/shared"
 import type { Anchor, Author as AuthorValue, SquawkDetail } from "@squawk/shared"
 import { useEffect, useRef, useState } from "react"
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
-import { Link, useParams } from "react-router"
-import { addComment, getSquawk, updateSquawkStatus } from "../api/client"
+import { Link, useNavigate, useParams } from "react-router"
+import {
+   addComment,
+   clearSquawkWorking,
+   getSquawk,
+   setSquawkRead,
+   updateSquawkStatus
+} from "../api/client"
 import { useQuery } from "../api/hooks"
 import { Author, authorName } from "../components/author"
 import { Avatar } from "../components/avatar"
@@ -23,6 +29,7 @@ import { ScreenshotWithPin } from "../components/screenshot-with-pin"
 import { Skeleton } from "../components/skeleton"
 import { StatusChip } from "../components/status-chip"
 import { useToast } from "../components/toast"
+import { WorkingBanner } from "../components/working"
 import { formatDateTime, truncate } from "../lib/format"
 import { buildSquawkPageUrl, isSafeHttpUrl, siteLink } from "../lib/links"
 import { describeUserAgent } from "../lib/user-agent"
@@ -30,14 +37,29 @@ import { describeUserAgent } from "../lib/user-agent"
 export function SquawkPage() {
    const squawkId = useParams().id ?? ""
    const squawk = useQuery(`squawk:${squawkId}`, () => getSquawk(squawkId))
+   const { data, setData } = squawk
+
+   // Looking at the thread reads it, also when a reply arrives while it is open (Figma-style).
+   const unread = data?.unread === true
+   useEffect(() => {
+      if (!unread) {
+         return
+      }
+      setSquawkRead(squawkId, true).then(
+         () => setData(current => ({ ...current, unread: false })),
+         () => {
+            // Stays unread; the next poll tries again.
+         }
+      )
+   }, [squawkId, unread, setData])
 
    if (squawk.error !== undefined) {
       return <ErrorNotice error={squawk.error} />
    }
-   if (squawk.data === undefined) {
+   if (data === undefined) {
       return <SquawkSkeleton />
    }
-   return <SquawkView squawk={squawk.data} onChanged={squawk.reload} />
+   return <SquawkView squawk={data} onChanged={squawk.reload} />
 }
 
 function SquawkSkeleton() {
@@ -66,6 +88,35 @@ function SquawkSkeleton() {
 function SquawkView({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: () => void }) {
    const label = `${squawk.siteKey} #${squawk.number}`
    const title = truncate(markdownPreview(squawk.body), 80)
+   const [busy, setBusy] = useState(false)
+   const navigate = useNavigate()
+   const showToast = useToast()
+
+   /** Back to the list, like Figma, so opening the thread again does not read it right away. */
+   async function markUnread() {
+      setBusy(true)
+      try {
+         await setSquawkRead(squawk.id, false)
+         showToast(`Marked #${squawk.number} as unread`)
+         void navigate(siteLink(squawk.siteKey))
+      } catch (caught) {
+         showToast(caught instanceof Error ? caught.message : "Marking as unread failed.")
+         setBusy(false)
+      }
+   }
+
+   async function clearWorking() {
+      setBusy(true)
+      try {
+         await clearSquawkWorking(squawk.id)
+         showToast("Cleared")
+         onChanged()
+      } catch (caught) {
+         showToast(caught instanceof Error ? caught.message : "Clearing failed.")
+      } finally {
+         setBusy(false)
+      }
+   }
 
    return (
       <>
@@ -82,8 +133,24 @@ function SquawkView({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: ()
                <header className="detail-title-row">
                   <span className="detail-number">#{squawk.number}</span>
                   <StatusChip status={squawk.status} />
+                  <button
+                     type="button"
+                     className="button button-ghost button-small detail-title-action"
+                     disabled={busy}
+                     onClick={() => void markUnread()}
+                  >
+                     <span className="unread-dot" aria-hidden="true" />
+                     Mark as unread
+                  </button>
                   <h1 className="detail-title">{title}</h1>
                </header>
+               {squawk.working !== null && (
+                  <WorkingBanner
+                     working={squawk.working}
+                     busy={busy}
+                     onClear={() => void clearWorking()}
+                  />
+               )}
                {squawk.screenshot === null ? (
                   <EmptyState
                      icon={<ImageIcon size={22} />}

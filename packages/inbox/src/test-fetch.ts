@@ -49,3 +49,36 @@ export const userAuthor = {
    avatarUrl: null,
    agent: null
 }
+
+/** A delegated agent: Ada's CLI login writing on her behalf. */
+export const adaAgent = {
+   ...userAuthor,
+   agent: { tokenId: "7a1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f", name: "CLI laptop.local" }
+}
+
+/** An open squawk as `GET /api/squawks` and `GET /api/squawks/:id` return it. */
+export function squawkFixture(overrides: Record<string, unknown> = {}) {
+   return {
+      id: "2b1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f",
+      siteKey: "main",
+      number: 3,
+      page: "/settings",
+      status: "open",
+      anchor: null,
+      meta: {},
+      screenshot: null,
+      body: "The save button overlaps the footer.",
+      author: userAuthor,
+      commentCount: 0,
+      createdAt: "2026-10-10T10:00:00.000Z",
+      submittedAt: "2026-10-10T10:00:00.000Z",
+      lastActivityAt: "2026-10-10T10:00:00.000Z",
+      lastAuthor: userAuthor,
+      unread: false,
+      working: null,
+      resolvedAt: null,
+      resolvedBy: null,
+      comments: [],
+      ...overrides
+   }
+}

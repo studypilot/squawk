@@ -5,12 +5,18 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { mockFetch } from "../test-fetch"
 import { SitesPage } from "./sites"
 
-function site(key: string, lastActivityAt: string | null, displayName: string | null = null) {
+function site(
+   key: string,
+   lastActivityAt: string | null,
+   displayName: string | null = null,
+   unreadCount = 0
+) {
    return {
       key,
       displayName,
       openCount: 3,
       resolvedCount: 1,
+      unreadCount,
       lastActivityAt,
       createdAt: "2026-10-01T08:00:00.000Z"
    }
@@ -51,6 +57,20 @@ describe("SitesPage", () => {
       expect(screen.getByRole("link", { name: "feature-x" }).getAttribute("href")).toBe(
          "/sites/feature-x"
       )
+   })
+
+   it("links unread counts to the unread filter of the site", async () => {
+      mockFetch({
+         "GET /api/sites": () => ({
+            body: { items: [site("feature-x", null, null, 2), site("quiet", null)] }
+         })
+      })
+
+      renderPage()
+
+      const badge = await screen.findByRole("link", { name: "2 unread" })
+      expect(badge.getAttribute("href")).toBe("/sites/feature-x?unread=1")
+      expect(screen.queryAllByText(/unread/)).toHaveLength(1)
    })
 
    it("saves an edited display name with PATCH", async () => {
