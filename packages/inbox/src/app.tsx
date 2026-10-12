@@ -2,7 +2,7 @@ import { useState } from "react"
 import { createBrowserRouter, Link, useRouteError } from "react-router"
 import type { RouteObject } from "react-router"
 import { RouterProvider } from "react-router/dom"
-import { PlaneMark } from "./assets/plane-mark"
+import { SquawkMark } from "./assets/squawk-mark"
 import { EmptyState } from "./components/empty-state"
 import { AlertIcon } from "./components/icons"
 import { Layout } from "./components/layout"
@@ -16,7 +16,11 @@ import { TokensPage } from "./pages/tokens"
 
 function NotFoundPage() {
    return (
-      <EmptyState icon={<PlaneMark size={22} />} title="Not found" hint="This page does not exist.">
+      <EmptyState
+         icon={<SquawkMark size={22} />}
+         title="Not found"
+         hint="This page does not exist."
+      >
          <Link to="/" className="button button-secondary">
             Back to the sites
          </Link>

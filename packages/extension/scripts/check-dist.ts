@@ -82,7 +82,7 @@ if (typeof popup === "string" && existsSync(join(distDirectory, popup))) {
    }
 }
 
-for (const size of ["16", "48", "128"]) {
+for (const size of ["16", "32", "48", "128"]) {
    expectFile(manifest.icons?.[size], `icons.${size}`)
    expectFile(manifest.action?.default_icon?.[size], `action.default_icon.${size}`)
 }

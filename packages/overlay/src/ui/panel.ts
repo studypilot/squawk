@@ -3,7 +3,7 @@ import type { Author, Squawk, SquawkDetail, SquawkStatus } from "@squawk/shared"
 import type { LoginState } from "../auth"
 import type { ListFilter, OverlayState } from "../state"
 import { copyText } from "./clipboard"
-import { autoGrow, avatar, h, icon, planeMark } from "./dom"
+import { autoGrow, avatar, h, icon, squawkMark } from "./dom"
 import type { IconName } from "./dom"
 import { authorName, relativeTime } from "./format"
 
@@ -65,7 +65,7 @@ export function createPanel(handlers: PanelHandlers): Panel {
    )
    const header = h("div", { class: "panel-header" }, [
       h("div", { class: "panel-brand" }, [
-         planeMark(18),
+         squawkMark(18),
          h("span", { class: "wordmark" }, ["Squawk"]),
          newButton,
          iconButton("close", "Close", () => handlers.close())
@@ -193,7 +193,7 @@ function signInView(login: LoginState | null, handlers: PanelHandlers): HTMLElem
    const retryWithCode = (): HTMLElement => signInButton(() => handlers.signInWithCode())
 
    const view = h("div", { class: "sign-in" }, [
-      planeMark(28),
+      squawkMark(28),
       h("div", { class: "title" }, ["Sign in to Squawk"])
    ])
    if (!login) {

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, NavLink, Outlet } from "react-router"
-import { PlaneMark } from "../assets/plane-mark"
+import { SquawkMark } from "../assets/squawk-mark"
 import { ApiError, getMe, loginUrl, logout } from "../api/client"
 import { useQuery } from "../api/hooks"
 import { applyTheme, readTheme, THEME_OPTIONS } from "../lib/theme"
@@ -23,7 +23,7 @@ export function Layout() {
          <header className="top-bar">
             <div className="top-bar-inner">
                <Link to="/" className="brand" aria-label="Squawk home">
-                  <PlaneMark size={20} className="brand-mark" />
+                  <SquawkMark size={20} className="brand-mark" />
                   <span className="wordmark">Squawk</span>
                </Link>
                {!signedOut && (
@@ -110,7 +110,7 @@ function SignedOutCard() {
    const returnTo = window.location.pathname + window.location.search
    return (
       <section className="auth-card">
-         <PlaneMark size={32} className="auth-card-mark" />
+         <SquawkMark size={32} className="auth-card-mark" />
          <h1>Squawk</h1>
          <p className="auth-card-tagline">Comments on your preview builds.</p>
          <a className="button button-primary button-large" href={loginUrl(returnTo)}>

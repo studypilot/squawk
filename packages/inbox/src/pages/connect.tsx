@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 import { useSearchParams } from "react-router"
 import { CONNECT_MESSAGE_TYPE, isWebOrigin, LOGIN_TOKEN_TTL_DAYS } from "@squawk/shared"
 import type { ConnectMessage, UserAuthor } from "@squawk/shared"
-import { PlaneMark } from "../assets/plane-mark"
+import { SquawkMark } from "../assets/squawk-mark"
 import { ApiError, connectOrigin, getConnectInfo, getMe } from "../api/client"
 import { authorName } from "../components/author"
 import { Avatar } from "../components/avatar"
@@ -120,7 +120,7 @@ function ConnectFlow({ origin, opener }: { origin: string; opener: Window }) {
       case "loading":
          return (
             <section className="card device-card">
-               <PlaneMark size={28} className="device-mark" />
+               <SquawkMark size={28} className="device-mark" />
                <LoadingNotice label="Checking your session" />
             </section>
          )
@@ -129,7 +129,7 @@ function ConnectFlow({ origin, opener }: { origin: string; opener: Window }) {
          if (state.user === null) {
             return (
                <section className="card device-card">
-                  <PlaneMark size={28} className="device-mark" />
+                  <SquawkMark size={28} className="device-mark" />
                   <LoadingNotice label="Signing in" />
                </section>
             )
@@ -174,7 +174,7 @@ function ConsentCard({
    const name = authorName(user)
    return (
       <section className="card device-card" aria-labelledby="connect-title">
-         <PlaneMark size={28} className="device-mark" />
+         <SquawkMark size={28} className="device-mark" />
          <h1 className="device-title" id="connect-title">
             Connect this site
          </h1>

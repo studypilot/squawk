@@ -34,7 +34,8 @@ Local development: `pnpm install`, `docker compose -f deploy/docker-compose.yml 
 
 ## Design
 
-`docs/plans/001-mvp.md` is the design document the first version was built from.
+`docs/plans/001-mvp.md` is the design document the first version was built from. `brand/` holds
+the Squawk mark as master SVGs, with the stroke widths per size.
 
 ## License
 

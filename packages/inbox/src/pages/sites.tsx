@@ -2,7 +2,7 @@ import type { Site } from "@squawk/shared"
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { Link } from "react-router"
-import { PlaneMark } from "../assets/plane-mark"
+import { SquawkMark } from "../assets/squawk-mark"
 import { listSites, updateSiteDisplayName } from "../api/client"
 import { useQuery } from "../api/hooks"
 import { CopyButton } from "../components/copy-button"
@@ -207,7 +207,7 @@ function EmptySites() {
    const snippet = `<script src="${window.location.origin}/squawk.js" data-site="my-branch" defer></script>`
    return (
       <EmptyState
-         icon={<PlaneMark size={22} />}
+         icon={<SquawkMark size={22} />}
          title="No sites yet"
          hint="Load squawk.js on a preview and file the first squawk."
       >

@@ -52,13 +52,16 @@ export function icon(name: IconName, size = 16): SVGSVGElement {
    return template.content.firstElementChild as SVGSVGElement
 }
 
-/** The studypilot plane, from the renderer's logo_transparent.svg, filled with currentColor. */
-const PLANE_PATH =
-   "M204.966 28.1217C203.75 29.3369 199.715 33.4436 198.639 34.6624L176.051 58.4662C175.938 58.5941 175.791 58.6883 175.628 58.7381C175.465 58.7879 175.291 58.7915 175.125 58.7485L72.5045 48.7552C71.8517 48.6643 71.187 48.7163 70.5563 48.9076C69.9255 49.0989 69.3439 49.425 68.8517 49.8632L59.2408 59.4741L142.876 90.9265C143.07 90.996 143.242 91.1147 143.376 91.2711C143.511 91.4274 143.602 91.616 143.641 91.8182C143.68 92.0204 143.666 92.2294 143.601 92.4246C143.535 92.6198 143.419 92.7946 143.265 92.9316L100.415 137.069C99.976 137.535 99.4334 137.891 98.831 138.109C98.2287 138.326 97.5835 138.398 96.948 138.32L67.6401 135.46C65.1739 135.139 62.4147 136.397 60.6669 138.144L53.9261 144.885C53.465 145.346 53.9654 145.711 54.5265 146.022L87.1441 164.457C89.0472 165.288 90.5663 166.807 91.3974 168.711L109.747 201.257C110.233 202.165 110.633 202.515 111.452 201.696L117.857 195.291C120.766 192.382 120.784 191.606 120.398 188.247L117.539 158.438C117.465 157.803 117.54 157.16 117.757 156.558C117.974 155.957 118.327 155.414 118.79 154.972L162.887 112.804C163.048 112.65 163.244 112.538 163.457 112.478C163.671 112.417 163.896 112.409 164.114 112.456C164.331 112.502 164.534 112.6 164.704 112.742C164.875 112.885 165.008 113.067 165.093 113.272L196.488 196.721L206.009 187.2C206.447 186.708 206.772 186.128 206.963 185.498C207.155 184.869 207.207 184.206 207.117 183.554L197.253 80.8689C197.178 80.515 197.646 79.8324 197.892 79.5858L221.339 57.3546C222.59 56.2466 226.661 52.2472 227.879 51.0284C243.702 35.2057 249.36 20.8484 242.237 13.7251C235.114 6.60183 220.835 12.2525 204.966 28.1217Z"
+/** The Squawk mark (brand/squawk-mark.svg): a bird-shaped speech bubble outline. */
+const MARK_PATH =
+   "M30 11c11 0 19 7 20 16 5 0 9 2 11 5-2 3-6 5-11 5-2 9-10 15-20 15-5 0-9-1-12-3-3 3-7 4-11 4 3-3 4-6 4-9-2-3-3-6-3-10 0-13 10-23 22-23z"
 
-export function planeMark(size = 18): SVGSVGElement {
+/** Outline in currentColor; strokes and eye grow at small sizes so the lines never thin out. */
+export function squawkMark(size = 18): SVGSVGElement {
+   const [strokeWidth, eyeRadius] =
+      size >= 48 ? [5, 3.2] : size >= 24 ? [6, 3.6] : size >= 17 ? [7, 4] : [8, 4.5]
    const template = document.createElement("template")
-   template.innerHTML = `<svg class="mark" viewBox="46 6 210 210" width="${size}" height="${size}" fill="currentColor" aria-hidden="true"><path d="${PLANE_PATH}"/></svg>`
+   template.innerHTML = `<svg class="mark" viewBox="0 0 64 64" width="${size}" height="${size}" fill="none" aria-hidden="true"><path d="${MARK_PATH}" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linejoin="round"/><circle cx="38" cy="26" r="${eyeRadius}" fill="currentColor"/></svg>`
    return template.content.firstElementChild as SVGSVGElement
 }
 

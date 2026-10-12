@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { defineConfig, type Plugin } from "vite"
-import { renderIconPng } from "./scripts/icon"
 
 /*
  * Two builds into `dist/`:
- * - default mode: popup and background service worker (ES modules), plus manifest and icons;
+ * - default mode: popup and background service worker (ES modules), plus manifest and the icons
+ *   from `icons/` (the Squawk tile, see brand/README.md);
  * - `--mode content`: the content script as one self-contained IIFE, because Chrome cannot load
  *   content scripts as modules.
  */
@@ -17,7 +17,7 @@ const { version } = JSON.parse(
 ) as {
    version: string
 }
-const iconSizes = [16, 48, 128] as const
+const iconSizes = [16, 32, 48, 128] as const
 
 function manifestPlugin(): Plugin {
    const icons = Object.fromEntries(iconSizes.map(size => [size, `icons/icon-${size}.png`]))
@@ -44,7 +44,11 @@ function manifestPlugin(): Plugin {
             source: `${JSON.stringify(manifest, null, 3)}\n`
          })
          for (const size of iconSizes) {
-            this.emitFile({ type: "asset", fileName: icons[size], source: renderIconPng(size) })
+            this.emitFile({
+               type: "asset",
+               fileName: icons[size],
+               source: readFileSync(new URL(`./${icons[size]}`, import.meta.url))
+            })
          }
       }
    }

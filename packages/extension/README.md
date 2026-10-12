@@ -71,6 +71,6 @@ pnpm --filter @squawk/extension test
 pnpm --filter @squawk/extension zip        # checks dist/ and writes squawk-extension-<version>.zip
 ```
 
-The icons are drawn by `scripts/icon.ts` at build time; the manifest is generated in
-`vite.config.ts` with the version from `package.json`. The content script is built separately as a
-single classic script because Chrome does not load content scripts as modules.
+The icons in `icons/` are the Squawk tile from `brand/` rendered as PNGs; the manifest is
+generated in `vite.config.ts` with the version from `package.json`. The content script is built
+separately as a single classic script because Chrome does not load content scripts as modules.

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useSearchParams } from "react-router"
-import { PlaneMark } from "../assets/plane-mark"
+import { SquawkMark } from "../assets/squawk-mark"
 import { ApiError, decideDevice, getDeviceInfo } from "../api/client"
 import type { DeviceInfo } from "../api/client"
 import { useQuery } from "../api/hooks"
@@ -46,7 +46,7 @@ export function DevicePage() {
 
    return (
       <section className="card device-card">
-         <PlaneMark size={28} className="device-mark" />
+         <SquawkMark size={28} className="device-mark" />
          <h1 className="device-title">Approve a device</h1>
          <p className="text-2 device-intro">
             Enter the code shown in the overlay or the CLI to let it act on your behalf.
@@ -124,7 +124,7 @@ function DeviceDecision({
       <div className="device-decision">
          <div className="device-requester">
             <span className="device-requester-icon">
-               {info.kind === "overlay" ? <PlaneMark size={16} /> : <TerminalIcon size={16} />}
+               {info.kind === "overlay" ? <SquawkMark size={16} /> : <TerminalIcon size={16} />}
             </span>
             <span className="device-requester-text">
                <span>

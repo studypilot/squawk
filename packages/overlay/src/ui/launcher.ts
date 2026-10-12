@@ -1,5 +1,5 @@
 import type { OverlayState } from "../state"
-import { h, icon, planeMark } from "./dom"
+import { h, icon, squawkMark } from "./dom"
 
 export interface LauncherHandlers {
    togglePanel(): void
@@ -11,7 +11,7 @@ export interface Launcher {
    render(state: OverlayState): void
 }
 
-/** Floating pill: plane mark, the panel button with the open count, and the pin-mode button. */
+/** Floating pill: Squawk mark, the panel button with the open count, and the pin-mode button. */
 export function createLauncher(handlers: LauncherHandlers): Launcher {
    const badge = h("span", { class: "badge", hidden: true })
    const pinButton = h(
@@ -31,7 +31,7 @@ export function createLauncher(handlers: LauncherHandlers): Launcher {
       [icon("comment"), badge]
    )
    const pill = h("div", { class: "launcher-pill" }, [
-      h("span", { class: "launcher-mark" }, [planeMark(18)]),
+      h("span", { class: "launcher-mark" }, [squawkMark(18)]),
       panelButton,
       h("span", { class: "launcher-divider" }),
       pinButton
