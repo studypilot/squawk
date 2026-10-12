@@ -1,6 +1,6 @@
 {
    "name": "squawk",
-   "version": "0.1.0",
+   "version": "0.1.1",
    "private": true,
    "description": "Comment on any preview deployment: pin a spot, attach a screenshot, discuss. Team SSO and agent tokens.",
    "license": "MIT",

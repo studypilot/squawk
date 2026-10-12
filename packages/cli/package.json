@@ -1,6 +1,6 @@
 {
    "name": "@studypilot/squawk-cli",
-   "version": "0.1.0",
+   "version": "0.1.1",
    "description": "Command-line client for Squawk: list, read, answer and resolve squawks from scripts and coding agents.",
    "license": "MIT",
    "type": "module",
