@@ -79,14 +79,19 @@ function serve(harness: Harness, polls: (SquawkDetail[] | Error)[], claimStatus 
    })
 }
 
-/** Advances fake time until the command finishes, yielding to real file I/O in between. */
+/**
+ * Drives the command to its end: fake time only moves while the command waits on a timer, so a
+ * slow runner's real file I/O cannot burn through the watch timeout in the meantime, and the
+ * loop is bounded by real time (`performance.now` is not faked) rather than a step count.
+ */
 async function finish(promise: Promise<number>): Promise<number> {
    let settled = false
    void promise.finally(() => {
       settled = true
    })
-   for (let step = 0; step < 500 && !settled; step++) {
-      await vi.advanceTimersByTimeAsync(1000)
+   const deadline = performance.now() + 4000
+   while (!settled && performance.now() < deadline) {
+      if (vi.getTimerCount() > 0) await vi.advanceTimersByTimeAsync(1000)
       await new Promise(resolve => setImmediate(resolve))
    }
    return promise
