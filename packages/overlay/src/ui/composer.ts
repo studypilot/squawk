@@ -1,5 +1,6 @@
 import { LIMITS } from "@squawk/shared"
 import type { Anchor } from "@squawk/shared"
+import { capturedPoint } from "../anchor/area"
 import type { CapturedScreenshot } from "../screenshot"
 import { autoGrow, h, icon, spinner } from "./dom"
 import { isNarrowViewport, placeBeside } from "./placement"
@@ -24,14 +25,15 @@ const ARROW_INSET = 22
 const ARROW_HALF = 6
 /** Used until the card is in the DOM and can report its real height. */
 const CARD_HEIGHT_ESTIMATE = 400
-/** The pin is kept inside the middle third of the thumbnail crop. */
+/** The pin (or the centre of the area) is kept inside the middle third of the thumbnail crop. */
 const CROP_BIAS_MIN = 1 / 3
 const CROP_BIAS_MAX = 2 / 3
 
 /**
  * Card with screenshot preview, comment field and the two ways to file it, placed next to the
  * pin with an arrow pointing at it. Enter adds the squawk to the review, Cmd/Ctrl+Enter sends it
- * right away, Shift+Enter breaks the line. The wrapper also carries the new pin on the page.
+ * right away, Shift+Enter breaks the line. The wrapper also carries the new pin on the page,
+ * and the outlined area for an area squawk.
  */
 export function createComposer(options: ComposerOptions): Composer {
    const { anchor, screenshot } = options
@@ -122,6 +124,17 @@ export function createComposer(options: ComposerOptions): Composer {
    const newPin = h("span", { class: "composer-pin", "aria-hidden": "true" })
    newPin.style.left = `${anchor.page.x - window.scrollX}px`
    newPin.style.top = `${anchor.page.y - window.scrollY}px`
+   const marks = [newPin]
+   if (anchor.area) {
+      const newArea = h("span", { class: "composer-area", "aria-hidden": "true" })
+      Object.assign(newArea.style, {
+         left: `${anchor.area.x}px`,
+         top: `${anchor.area.y}px`,
+         width: `${anchor.area.width}px`,
+         height: `${anchor.area.height}px`
+      })
+      marks.unshift(newArea)
+   }
    placeCard(card, arrow, anchor, CARD_HEIGHT_ESTIMATE)
    // Once mounted the card knows its height, which decides whether below/above fits.
    requestAnimationFrame(() => {
@@ -129,7 +142,7 @@ export function createComposer(options: ComposerOptions): Composer {
       textarea.focus()
    })
    return {
-      element: h("div", { class: "composer-root" }, [newPin, card]),
+      element: h("div", { class: "composer-root" }, [...marks, card]),
       close: () => options.close()
    }
 }
@@ -143,13 +156,10 @@ function preview(anchor: Anchor, screenshot: CapturedScreenshot | null): HTMLEle
          ])
       ]
    }
-   const clickX = anchor.elementBox.x + anchor.rect.x * anchor.elementBox.width
-   const clickY = anchor.elementBox.y + anchor.rect.y * anchor.elementBox.height
-   const fraction = { x: clickX / anchor.viewport.width, y: clickY / anchor.viewport.height }
-   const marker = h("span", { class: "marker" })
+   const marker = h("span", { class: anchor.area ? "marker-area" : "marker" })
    const image = h("img", { src: screenshot.previewUrl, alt: "Screenshot" })
    const shot = h("div", { class: "composer-shot" }, [image, marker])
-   const layout = (): void => cropAroundPin(shot, image, marker, screenshot, fraction)
+   const layout = (): void => cropAroundPin(shot, image, marker, screenshot, anchor)
    layout()
    requestAnimationFrame(layout)
    window.addEventListener("resize", layout, { passive: true })
@@ -164,40 +174,60 @@ function preview(anchor: Anchor, screenshot: CapturedScreenshot | null): HTMLEle
 }
 
 /**
- * Crops the thumbnail (object-fit: cover) so the pin lands in the middle third of the box and
- * draws the marker where the pinned point ends up. `object-position: p%` puts the image's p%
- * point at the box's p% point, so the position follows from the wanted marker spot.
+ * Crops the thumbnail (object-fit: cover) so the pin, or the centre of the area, lands in the
+ * middle third of the box and draws the marker where the pinned spot ends up. `object-position:
+ * p%` puts the image's p% point at the box's p% point, so the position follows from the wanted
+ * marker spot.
  */
 function cropAroundPin(
    box: HTMLElement,
    image: HTMLImageElement,
    marker: HTMLElement,
    screenshot: CapturedScreenshot,
-   fraction: { x: number; y: number }
+   anchor: Anchor
 ): void {
    const boxWidth = box.clientWidth
    const boxHeight = box.clientHeight
    if (!boxWidth || !boxHeight) return
+   const { width, height } = anchor.viewport
+   const { area } = anchor
+   const focus = area
+      ? { x: (area.x + area.width / 2) / width, y: (area.y + area.height / 2) / height }
+      : { x: capturedPoint(anchor).x / width, y: capturedPoint(anchor).y / height }
    const scale = Math.max(boxWidth / screenshot.width, boxHeight / screenshot.height)
-   const x = cropAxis(fraction.x, boxWidth, screenshot.width * scale)
-   const y = cropAxis(fraction.y, boxHeight, screenshot.height * scale)
+   const x = cropAxis(focus.x, boxWidth, screenshot.width * scale)
+   const y = cropAxis(focus.y, boxHeight, screenshot.height * scale)
    image.style.objectPosition = `${x.position}% ${y.position}%`
-   marker.style.left = `${x.marker}%`
-   marker.style.top = `${y.marker}%`
+   if (area) {
+      const left = x.place(area.x / width)
+      const top = y.place(area.y / height)
+      marker.style.left = `${left}%`
+      marker.style.top = `${top}%`
+      marker.style.width = `${x.place((area.x + area.width) / width) - left}%`
+      marker.style.height = `${y.place((area.y + area.height) / height) - top}%`
+      return
+   }
+   marker.style.left = `${x.place(focus.x)}%`
+   marker.style.top = `${y.place(focus.y)}%`
 }
 
-/** Object-position and marker spot (both in %) for one axis of the crop. */
+/**
+ * One axis of the crop: the object-position (in %) that brings `focus` into the middle third,
+ * and `place`, which maps any fraction of the image to its spot in the box (in %).
+ */
 function cropAxis(
-   fraction: number,
+   focus: number,
    boxSize: number,
    imageSize: number
-): { position: number; marker: number } {
+): { position: number; place(fraction: number): number } {
    const slack = boxSize - imageSize
-   if (slack >= -0.5) return { position: 50, marker: fraction * 100 }
-   const wanted = Math.min(CROP_BIAS_MAX, Math.max(CROP_BIAS_MIN, fraction))
-   const position = Math.min(1, Math.max(0, (wanted * boxSize - fraction * imageSize) / slack))
-   const marker = (position * slack + fraction * imageSize) / boxSize
-   return { position: position * 100, marker: marker * 100 }
+   if (slack >= -0.5) return { position: 50, place: fraction => fraction * 100 }
+   const wanted = Math.min(CROP_BIAS_MAX, Math.max(CROP_BIAS_MIN, focus))
+   const position = Math.min(1, Math.max(0, (wanted * boxSize - focus * imageSize) / slack))
+   return {
+      position: position * 100,
+      place: fraction => ((position * slack + fraction * imageSize) / boxSize) * 100
+   }
 }
 
 /**
@@ -208,7 +238,7 @@ function placeCard(card: HTMLElement, arrow: HTMLElement, anchor: Anchor, height
    if (isNarrowViewport()) return
    const point = { x: anchor.page.x - window.scrollX, y: anchor.page.y - window.scrollY }
    const chosen = placeBeside({
-      avoid: anchor.elementBox,
+      avoid: anchor.area ?? anchor.elementBox,
       point,
       width: CARD_WIDTH,
       height,

@@ -1,6 +1,6 @@
 import { anchorSchema } from "@squawk/shared"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { absoluteXPath, captureAnchor } from "./capture"
+import { absoluteXPath, anchorTarget, areaTarget, captureAnchor } from "./capture"
 import { resolveAnchor } from "./resolve"
 
 interface Box {
@@ -64,6 +64,9 @@ beforeEach(() => {
          <div data-testid="duplicate">A</div>
          <div data-testid="duplicate">B</div>
          <canvas id="sketch" width="300" height="150"></canvas>
+         <button class="icon-button"><svg viewBox="0 0 10 10"><path d="M0 0h10"/></svg></button>
+         <div class="chart"><svg viewBox="0 0 10 10"><g><circle r="2"/></g></svg></div>
+         <div role="button" data-testid="row"><div><span class="label">Row label</span></div></div>
       </main>`
 })
 
@@ -97,15 +100,33 @@ describe("captureAnchor", () => {
       })
    })
 
-   it("anchors on the nearest ancestor with a unique test id", () => {
-      const item = query('[data-testid="note-2"]')
-      setBox(item, { x: 0, y: 100, width: 200, height: 50 })
+   it("anchors the clicked element itself, not an ancestor with a test id", () => {
+      const title = query('[data-testid="note-2"] .title')
+      setBox(title, { x: 0, y: 100, width: 100, height: 20 })
 
-      const anchor = captureAnchor(query('[data-testid="note-2"] .title'), 50, 110)
+      const anchor = captureAnchor(title, 50, 110)
 
-      expect(anchor.selectors.testId).toBe("note-2")
-      expect(anchor.selectors.tagName).toBe("li")
-      expect(anchor.rect).toEqual({ x: 0.25, y: 0.2 })
+      expect(anchor.selectors.testId).toBeUndefined()
+      expect(anchor.selectors.tagName).toBe("span")
+      expect(anchor.selectors.text?.exact).toBe("Groceries")
+      expect(anchor.rect).toEqual({ x: 0.5, y: 0.5 })
+      expect(resolveAnchor(anchor)?.element).toBe(title)
+   })
+
+   it("records an area at its top-left corner on the containing element", () => {
+      const section = query("section")
+      setBox(section, { x: 0, y: 150, width: 600, height: 300 })
+      vi.spyOn(window, "scrollY", "get").mockReturnValue(40)
+      const area = { x: 60, y: 200, width: 300, height: 120 }
+
+      const anchor = captureAnchor(section, area.x, area.y, area)
+
+      expect(anchorSchema.parse(anchor)).toEqual(anchor)
+      expect(anchor.selectors.tagName).toBe("section")
+      expect(anchor.area).toEqual(area)
+      expect(anchor.rect).toEqual({ x: 0.1, y: 1 / 6 })
+      expect(anchor.page).toEqual({ x: 60, y: 240, scrollX: 0, scrollY: 40 })
+      expect(anchor.elementBox).toEqual({ x: 0, y: 150, width: 600, height: 300 })
    })
 
    it("ignores test ids that are not unique", () => {
@@ -128,6 +149,39 @@ describe("captureAnchor", () => {
       expect(anchor.selectors.tagName).toBe("canvas")
       expect(anchor.selectors.text).toBeUndefined()
       expect(resolveAnchor(anchor)?.element).toBe(canvas)
+   })
+})
+
+describe("anchorTarget", () => {
+   it("means the control when the icon inside a button is clicked", () => {
+      expect(anchorTarget(query(".icon-button path"))).toBe(query(".icon-button"))
+   })
+
+   it("means the whole icon when an inline SVG outside a control is clicked", () => {
+      expect(anchorTarget(query(".chart circle"))).toBe(query(".chart svg"))
+   })
+
+   it("climbs to a role=button within three levels, but not past the body", () => {
+      expect(anchorTarget(query(".label"))).toBe(query('[data-testid="row"]'))
+      expect(anchorTarget(query("h1"))).toBe(query("h1"))
+   })
+})
+
+describe("areaTarget", () => {
+   it("is the smallest element under the centre that contains the whole area", () => {
+      const list = query(".list")
+      const item = query('[data-testid="note-1"]')
+      setBox(query("main"), { x: 0, y: 0, width: 800, height: 800 })
+      setBox(list, { x: 0, y: 100, width: 400, height: 100 })
+      setBox(item, { x: 0, y: 100, width: 400, height: 50 })
+
+      expect(areaTarget(item, { x: 10, y: 110, width: 100, height: 30 })).toBe(item)
+      expect(areaTarget(item, { x: 10, y: 110, width: 100, height: 80 })).toBe(list)
+      expect(areaTarget(item, { x: 10, y: 110, width: 500, height: 80 })).toBe(query("main"))
+   })
+
+   it("falls back to the body when nothing contains the area", () => {
+      expect(areaTarget(query("h1"), { x: 0, y: 0, width: 5000, height: 5000 })).toBe(document.body)
    })
 })
 

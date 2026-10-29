@@ -83,8 +83,9 @@ flowchart LR
 
 ## What you get
 
-**For reviewers.** Press `c` or click `+`, click an element, write. Pins stick to elements through
-a selector bundle (test id, CSS, XPath, text) and fall back to page coordinates. Exact screenshots
+**For reviewers.** Press `c` or click `+`, then click an element or drag out an area, and write.
+Pins stick to elements through a selector bundle (test id, CSS, XPath, text) and fall back to page
+coordinates; areas move and scale with the element that contains them. Exact screenshots
 with the Chrome extension, an approximate rendering without it. Collect squawks as a review and
 submit them at once. Threads open at the pin, Markdown everywhere, unread dots, keyboard shortcuts
 (`c`, `j`/`k`, `r`, `u`, `Esc`) and deep links (`#squawk=<id>`). The inbox lists every site with

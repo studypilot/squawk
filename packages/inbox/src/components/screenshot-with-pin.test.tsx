@@ -1,7 +1,7 @@
 import type { Anchor, Screenshot } from "@squawk/shared"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { computePinPosition, ScreenshotWithPin } from "./screenshot-with-pin"
+import { computeAreaBox, computePinPosition, ScreenshotWithPin } from "./screenshot-with-pin"
 
 const anchor: Anchor = {
    version: 1,
@@ -35,6 +35,38 @@ describe("computePinPosition", () => {
    it("returns null for points outside the screenshot", () => {
       const offscreen = { ...anchor, elementBox: { x: 100, y: 900, width: 200, height: 100 } }
       expect(computePinPosition(offscreen, screenshot)).toBeNull()
+   })
+})
+
+describe("computeAreaBox", () => {
+   const areaAnchor: Anchor = {
+      ...anchor,
+      rect: { x: 0.1, y: 0.25 },
+      elementBox: { x: 0, y: 0, width: 1000, height: 800 },
+      area: { x: 100, y: 200, width: 300, height: 160 }
+   }
+
+   it("scales the area like the pin, in percent of the screenshot", () => {
+      expect(computeAreaBox(areaAnchor, screenshot)).toEqual({
+         leftPercent: 10,
+         topPercent: 25,
+         widthPercent: 30,
+         heightPercent: 20
+      })
+   })
+
+   it("is null for point squawks and for areas outside the screenshot", () => {
+      expect(computeAreaBox(anchor, screenshot)).toBeNull()
+      const below = { ...areaAnchor, area: { x: 0, y: 900, width: 10, height: 10 } }
+      expect(computeAreaBox(below, screenshot)).toBeNull()
+   })
+
+   it("draws the outline instead of the dot", () => {
+      render(<ScreenshotWithPin screenshot={screenshot} anchor={areaAnchor} label="site #2" />)
+      const area = screen.getByTestId("pin-area")
+      expect(area.style.left).toBe("10%")
+      expect(area.style.width).toBe("30%")
+      expect(screen.queryByTestId("pin")).toBeNull()
    })
 })
 

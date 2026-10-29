@@ -12,7 +12,10 @@ numbered per site: `feature/settings#3`. The site key is normally the branch nam
 a branch finds its squawks with `squawk site-key`. A squawk carries everything needed to act on it:
 the text, a screenshot, the page, the URL, the viewport, the build ref the reviewer saw (`meta.ref`)
 and an anchor with selectors for the pinned element (`testId`, `css`, `xpath`, a text quote) and
-its box on the screenshot (`elementBox`, in viewport pixels).
+its box on the screenshot (`elementBox`, in viewport pixels). A reviewer can also drag out an
+area instead of clicking an element: the anchor then carries `area` (the rectangle in viewport
+pixels), the pin sits at its top-left corner and the element is the smallest one containing it,
+so the selectors describe the surroundings, not one specific thing.
 
 ## Prerequisites
 
@@ -33,8 +36,8 @@ its box on the screenshot (`elementBox`, in viewport pixels).
    is on it.
 4. **Read.** `squawk show 'KEY#N' --json` for the thread, page, `meta` and `anchor`;
    `squawk screenshot 'KEY#N' --out /tmp/squawk-N.png` and look at the image. The text alone is
-   often ambiguous. To find the element on the image, multiply `anchor.elementBox` by
-   `screenshot.devicePixelRatio`.
+   often ambiguous. To find the element on the image, multiply `anchor.elementBox` (or
+   `anchor.area` for an area squawk) by `screenshot.devicePixelRatio`.
 5. **Find the code.** Search for the `testId` first, then distinctive parts of the CSS selector,
    then the quoted text in components and translation files. Compare `meta.ref` with the history:
    if the reviewer saw an older build, the issue may already be fixed.

@@ -28,6 +28,7 @@ export function renderDetail(detail: SquawkDetail, now: Date, screenshotPath?: s
    field("Version", detail.meta.appVersion)
    field("Viewport", formatViewport(detail))
    field("Anchor", detail.anchor === null ? undefined : formatAnchor(detail.anchor))
+   field("Area", detail.anchor?.area === undefined ? undefined : formatArea(detail.anchor.area))
    field("Author", `${authorLabel(detail.author)}, ${relativeTime(detail.createdAt, now)}`)
    if (detail.working !== null) {
       const { by, since } = detail.working
@@ -69,6 +70,12 @@ function formatViewport(detail: SquawkDetail): string | undefined {
    if (viewport === undefined) return undefined
    const ratio = detail.meta.devicePixelRatio
    return `${viewport.width}×${viewport.height}${ratio === undefined ? "" : ` @${ratio}x`}`
+}
+
+/** The marked rectangle in viewport pixels; its top-left corner carries the pin. */
+function formatArea(area: NonNullable<Anchor["area"]>): string {
+   const round = Math.round
+   return `${round(area.width)}×${round(area.height)} at (${round(area.x)}, ${round(area.y)})`
 }
 
 function formatAnchor(anchor: Anchor): string {

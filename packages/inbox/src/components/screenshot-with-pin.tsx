@@ -9,6 +9,11 @@ export interface PinPosition {
    topPercent: number
 }
 
+export interface AreaBox extends PinPosition {
+   widthPercent: number
+   heightPercent: number
+}
+
 /**
  * Where the pin sits on the screenshot, in percent of its width and height. The click point is
  * `elementBox` plus `rect` in viewport pixels. Captures scale the viewport uniformly (device
@@ -30,14 +35,77 @@ export function computePinPosition(
    return { leftPercent: left * 100, topPercent: top * 100 }
 }
 
+/**
+ * The outlined area of an area squawk, in percent of the screenshot, or `null` for point squawks
+ * and areas that lie entirely outside the screenshot.
+ */
+export function computeAreaBox(
+   anchor: Anchor,
+   screenshot: Pick<Screenshot, "width" | "height">
+): AreaBox | null {
+   const { area } = anchor
+   if (area === undefined) {
+      return null
+   }
+   const scale = screenshot.width / anchor.viewport.width
+   const left = (area.x * scale) / screenshot.width
+   const top = (area.y * scale) / screenshot.height
+   const width = (area.width * scale) / screenshot.width
+   const height = (area.height * scale) / screenshot.height
+   if (left > 1 || top > 1 || left + width < 0 || top + height < 0) {
+      return null
+   }
+   return {
+      leftPercent: left * 100,
+      topPercent: top * 100,
+      widthPercent: width * 100,
+      heightPercent: height * 100
+   }
+}
+
+/** The pin dot for a point squawk, or the outlined rectangle for an area squawk. */
+function Marker({ anchor, screenshot }: { anchor: Anchor; screenshot: Screenshot }) {
+   const area = computeAreaBox(anchor, screenshot)
+   if (area !== null) {
+      return (
+         <span
+            className="pin-area"
+            data-testid="pin-area"
+            title="Marked area"
+            style={{
+               left: `${area.leftPercent}%`,
+               top: `${area.topPercent}%`,
+               width: `${area.widthPercent}%`,
+               height: `${area.heightPercent}%`
+            }}
+         />
+      )
+   }
+   if (anchor.area !== undefined) {
+      return null
+   }
+   const position = computePinPosition(anchor, screenshot)
+   if (position === null) {
+      return null
+   }
+   return (
+      <span
+         className="pin"
+         data-testid="pin"
+         title="Pinned spot"
+         style={{ left: `${position.leftPercent}%`, top: `${position.topPercent}%` }}
+      />
+   )
+}
+
 function PinnedImage({
    screenshot,
-   position,
+   anchor,
    label,
    lazy = false
 }: {
    screenshot: Screenshot
-   position: PinPosition | null
+   anchor: Anchor | null
    label: string
    lazy?: boolean
 }) {
@@ -50,14 +118,7 @@ function PinnedImage({
             alt={`Screenshot of ${label}`}
             loading={lazy ? "lazy" : undefined}
          />
-         {position !== null && (
-            <span
-               className="pin"
-               data-testid="pin"
-               title="Pinned spot"
-               style={{ left: `${position.leftPercent}%`, top: `${position.topPercent}%` }}
-            />
-         )}
+         {anchor !== null && <Marker anchor={anchor} screenshot={screenshot} />}
       </>
    )
 }
@@ -73,7 +134,6 @@ export function ScreenshotWithPin({
    label: string
 }) {
    const [expanded, setExpanded] = useState(false)
-   const position = anchor === null ? null : computePinPosition(anchor, screenshot)
    const portrait = screenshot.height > screenshot.width
 
    return (
@@ -84,7 +144,7 @@ export function ScreenshotWithPin({
             aria-label="Open screenshot full size"
             onClick={() => setExpanded(true)}
          >
-            <PinnedImage screenshot={screenshot} position={position} label={label} />
+            <PinnedImage screenshot={screenshot} anchor={anchor} label={label} />
          </button>
          {screenshot.source === "dom" && (
             <figcaption>
@@ -94,8 +154,13 @@ export function ScreenshotWithPin({
          )}
          {expanded && (
             <Lightbox onClose={() => setExpanded(false)}>
-               <div className="screenshot-frame screenshot-frame-full">
-                  <PinnedImage screenshot={screenshot} position={position} label={label} />
+               <div
+                  className="screenshot-frame screenshot-frame-full"
+                  style={{
+                     width: `min(calc(100vw - 64px), calc((100vh - 64px) * ${screenshot.width} / ${screenshot.height}))`
+                  }}
+               >
+                  <PinnedImage screenshot={screenshot} anchor={anchor} label={label} />
                </div>
             </Lightbox>
          )}
@@ -106,10 +171,13 @@ export function ScreenshotWithPin({
 /** The tile shows roughly this many CSS pixels of the captured page, whatever the viewport was. */
 const THUMBNAIL_WINDOW_PX = 320
 
+/** An area is shown with this much room around it in the thumbnail. */
+const THUMBNAIL_AREA_MARGIN = 1.3
+
 /**
  * A square tile cropped around the pin. The image is drawn wide enough that the tile covers about
- * `THUMBNAIL_WINDOW_PX` of the page and shifted so the pin sits in the centre, clamped so the tile
- * never shows blank space.
+ * `THUMBNAIL_WINDOW_PX` of the page (or the whole area with some margin) and shifted so the pin
+ * or the area's centre sits in the middle, clamped so the tile never shows blank space.
  */
 export function ScreenshotThumbnail({
    screenshot,
@@ -125,12 +193,28 @@ export function ScreenshotThumbnail({
          </span>
       )
    }
-   const position = anchor === null ? null : computePinPosition(anchor, screenshot)
+   const area = anchor === null ? null : computeAreaBox(anchor, screenshot)
+   const position =
+      anchor === null || anchor.area !== undefined ? null : computePinPosition(anchor, screenshot)
    const viewportWidth = anchor?.viewport.width ?? screenshot.width / screenshot.devicePixelRatio
-   const zoom = Math.max(1.5, viewportWidth / THUMBNAIL_WINDOW_PX)
+   const areaExtent = anchor?.area
+      ? Math.max(anchor.area.width, anchor.area.height) * THUMBNAIL_AREA_MARGIN
+      : 0
+   // Pins get a close-up; an area is zoomed out as far as needed to show all of it.
+   const zoom = Math.max(
+      area === null ? 1.5 : 1,
+      viewportWidth / Math.max(THUMBNAIL_WINDOW_PX, areaExtent)
+   )
    const imageWidth = zoom * 100
    const imageHeight = (imageWidth * screenshot.height) / screenshot.width
-   const focus = position ?? { leftPercent: 25, topPercent: 15 }
+   const focus =
+      position ??
+      (area === null
+         ? { leftPercent: 25, topPercent: 15 }
+         : {
+              leftPercent: area.leftPercent + area.widthPercent / 2,
+              topPercent: area.topPercent + area.heightPercent / 2
+           })
    const left = clamp(50 - (focus.leftPercent / 100) * imageWidth, 100 - imageWidth, 0)
    const top = clamp(50 - (focus.topPercent / 100) * imageHeight, Math.min(0, 100 - imageHeight), 0)
    const pinLeft = left + (focus.leftPercent / 100) * imageWidth
@@ -146,6 +230,17 @@ export function ScreenshotThumbnail({
          />
          {position !== null && (
             <span className="pin pin-small" style={{ left: `${pinLeft}%`, top: `${pinTop}%` }} />
+         )}
+         {area !== null && (
+            <span
+               className="pin-area pin-area-small"
+               style={{
+                  left: `${left + (area.leftPercent / 100) * imageWidth}%`,
+                  top: `${top + (area.topPercent / 100) * imageHeight}%`,
+                  width: `${(area.widthPercent / 100) * imageWidth}%`,
+                  height: `${(area.heightPercent / 100) * imageHeight}%`
+               }}
+            />
          )}
       </span>
    )

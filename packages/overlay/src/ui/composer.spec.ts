@@ -12,9 +12,20 @@ const ANCHOR: Anchor = {
    viewport: { width: 1280, height: 800 }
 }
 
-function setup(submit: ComposerOptions["submit"] = vi.fn(async () => undefined)) {
+const AREA_ANCHOR: Anchor = {
+   ...ANCHOR,
+   rect: { x: 0.1, y: 0.2 },
+   page: { x: 100, y: 200, scrollX: 0, scrollY: 0 },
+   elementBox: { x: 0, y: 0, width: 1000, height: 1000 },
+   area: { x: 100, y: 200, width: 300, height: 150 }
+}
+
+function setup(
+   submit: ComposerOptions["submit"] = vi.fn(async () => undefined),
+   options: Partial<ComposerOptions> = {}
+) {
    const close = vi.fn()
-   const composer = createComposer({ anchor: ANCHOR, screenshot: null, submit, close })
+   const composer = createComposer({ anchor: ANCHOR, screenshot: null, submit, close, ...options })
    document.body.append(composer.element)
    const textarea = composer.element.querySelector("textarea")
    if (!textarea) throw new Error("textarea missing")
@@ -70,6 +81,31 @@ describe("composer", () => {
       )
       expect(textarea.disabled).toBe(false)
       expect(close).not.toHaveBeenCalled()
+   })
+
+   it("outlines the area on the page and on the screenshot preview", () => {
+      const screenshot = {
+         blob: new Blob(),
+         previewUrl: "blob:preview",
+         width: 2560,
+         height: 1600,
+         devicePixelRatio: 2,
+         source: "extension" as const
+      }
+      const { composer } = setup(undefined, { anchor: AREA_ANCHOR, screenshot })
+      const onPage = composer.element.querySelector<HTMLElement>(".composer-area")
+      expect(onPage?.style.left).toBe("100px")
+      expect(onPage?.style.top).toBe("200px")
+      expect(onPage?.style.width).toBe("300px")
+      expect(onPage?.style.height).toBe("150px")
+      expect(composer.element.querySelector(".composer-pin")).not.toBeNull()
+      expect(composer.element.querySelector(".composer-shot .marker-area")).not.toBeNull()
+      expect(composer.element.querySelector(".composer-shot .marker")).toBeNull()
+   })
+
+   it("marks a point squawk with a dot, not an outline", () => {
+      const { composer } = setup()
+      expect(composer.element.querySelector(".composer-area")).toBeNull()
    })
 
    it("closes with Escape and has no Markdown hint", () => {
