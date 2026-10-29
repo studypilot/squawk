@@ -1,5 +1,6 @@
 import { LIMITS, renderMarkdown } from "@squawk/shared"
 import type { Author, Squawk, SquawkDetail, SquawkTargetStatus } from "@squawk/shared"
+import { capturedPoint } from "../anchor/area"
 import type { OverlayState } from "../state"
 import { autoGrow, avatar, h, icon, spinner, workingSince } from "./dom"
 import type { IconName } from "./dom"
@@ -188,10 +189,18 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
          event.stopPropagation()
          close()
       }
-      lightbox.append(
-         h("img", { src: screenshotUrl, alt: "Screenshot" }),
-         iconButton("close", "Close", close)
-      )
+      const frame = h("div", { class: "lightbox-frame" }, [
+         h("img", { src: screenshotUrl, alt: "Screenshot" })
+      ])
+      // The frame, not the image, is constrained, so the marker's percentages always refer to
+      // the rendered image: as wide as the viewport allows, or as wide as the height allows.
+      const shot = detail?.screenshot
+      if (shot) {
+         frame.style.width = `min(100%, calc((100vh - 48px) * ${shot.width} / ${shot.height}))`
+      }
+      const marker = detail ? screenshotMarker(detail) : null
+      if (marker) frame.append(marker)
+      lightbox.append(frame, iconButton("close", "Close", close))
       lightbox.addEventListener("click", close)
       window.addEventListener("keydown", onKey, true)
       const root = element.getRootNode()
@@ -280,15 +289,27 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
    }
 }
 
-/** Marker on the stored screenshot at the pinned point; the image keeps its own aspect ratio. */
+/**
+ * Marker on the stored screenshot: the outlined area, or a dot at the pinned point. Positions
+ * are percentages of the viewport, so the image keeps its own aspect ratio.
+ */
 function screenshotMarker(detail: SquawkDetail): HTMLElement | null {
    const anchor = detail.anchor
    if (!anchor) return null
-   const clickX = anchor.elementBox.x + anchor.rect.x * anchor.elementBox.width
-   const clickY = anchor.elementBox.y + anchor.rect.y * anchor.elementBox.height
+   const { width, height } = anchor.viewport
+   const percent = (value: number, of: number): string => `${(value / of) * 100}%`
+   if (anchor.area) {
+      const marker = h("span", { class: "marker-area" })
+      marker.style.left = percent(anchor.area.x, width)
+      marker.style.top = percent(anchor.area.y, height)
+      marker.style.width = percent(anchor.area.width, width)
+      marker.style.height = percent(anchor.area.height, height)
+      return marker
+   }
+   const point = capturedPoint(anchor)
    const marker = h("span", { class: "marker" })
-   marker.style.left = `${(clickX / anchor.viewport.width) * 100}%`
-   marker.style.top = `${(clickY / anchor.viewport.height) * 100}%`
+   marker.style.left = percent(point.x, width)
+   marker.style.top = percent(point.y, height)
    return marker
 }
 

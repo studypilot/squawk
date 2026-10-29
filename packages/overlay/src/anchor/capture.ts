@@ -1,32 +1,90 @@
 import { finder } from "@medv/finder"
 import { layoutViewport } from "../viewport"
-import type { Anchor, TextQuote } from "@squawk/shared"
+import type { Anchor, AnchorBox, TextQuote } from "@squawk/shared"
 import { QUOTE_MAX_LENGTH, elementText } from "./text"
 import { uniqueTestId } from "./test-id"
 
-const TEST_ID_ANCESTOR_LEVELS = 3
+const INTERACTIVE_ANCESTOR_LEVELS = 3
 const QUOTE_CONTEXT_LENGTH = 32
 const SELECTOR_MAX_LENGTH = 2000
 const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+/** A click on these means the control, not the icon or label inside it. */
+const INTERACTIVE_SELECTOR = [
+   "button",
+   "a",
+   "summary",
+   "label",
+   '[role="button"]',
+   '[role="link"]',
+   '[role="menuitem"]',
+   '[role="menuitemcheckbox"]',
+   '[role="menuitemradio"]',
+   '[role="tab"]',
+   '[role="option"]',
+   '[role="checkbox"]',
+   '[role="radio"]',
+   '[role="switch"]'
+].join(",")
 
 /**
- * The element an anchor is recorded for: the clicked element, or its nearest ancestor (up to
- * three levels) with a unique test id. Anchoring on the test-id element keeps every selector
- * and the relative click point consistent with each other.
+ * The element an anchor is recorded for. The clicked element itself, so that small things deep
+ * in the tree can be pinned, with two exceptions: a click inside an inline SVG means the whole
+ * icon, and a click on the icon or label of a control (up to three levels down) means the
+ * control.
  */
 export function anchorTarget(element: Element): Element {
-   let current: Element | null = element
-   for (let level = 0; current && level <= TEST_ID_ANCESTOR_LEVELS; level++) {
+   let current: Element | null = svgRoot(element)
+   for (let level = 0; current && level <= INTERACTIVE_ANCESTOR_LEVELS; level++) {
       if (current === document.body || current === document.documentElement) break
-      if (uniqueTestId(current)) return current
+      if (current.matches(INTERACTIVE_SELECTOR)) return current
       current = current.parentElement
    }
-   return element
+   return svgRoot(element)
 }
 
-/** Records everything needed to find the clicked spot again. Coordinates are client coordinates. */
-export function captureAnchor(clicked: Element, clientX: number, clientY: number): Anchor {
-   const element = anchorTarget(clicked)
+function svgRoot(element: Element): Element {
+   let current: Element | null = element
+   let root = element
+   while (current && current.namespaceURI === SVG_NAMESPACE) {
+      root = current
+      current = current.parentElement
+   }
+   return root
+}
+
+/**
+ * The element an area is recorded for: the smallest element under the area's centre whose box
+ * contains the whole rectangle, with a little tolerance for borders and shadows.
+ */
+export function areaTarget(elementAtCentre: Element, area: AnchorBox): Element {
+   const tolerance = 2
+   let current: Element | null = elementAtCentre
+   while (current && current !== document.documentElement) {
+      const box = current.getBoundingClientRect()
+      const contains =
+         box.left - tolerance <= area.x &&
+         box.top - tolerance <= area.y &&
+         box.right + tolerance >= area.x + area.width &&
+         box.bottom + tolerance >= area.y + area.height
+      if (contains) return current
+      current = current.parentElement
+   }
+   return document.body
+}
+
+/**
+ * Records everything needed to find the clicked spot again. Coordinates are client coordinates.
+ * With `area`, `element` is its containing element (see `areaTarget`) and the point is the
+ * area's top-left corner.
+ */
+export function captureAnchor(
+   clicked: Element,
+   clientX: number,
+   clientY: number,
+   area?: AnchorBox
+): Anchor {
+   const element = area ? clicked : anchorTarget(clicked)
    const box = element.getBoundingClientRect()
    const testId = uniqueTestId(element)
    const css = cssSelector(element)
@@ -51,6 +109,7 @@ export function captureAnchor(clicked: Element, clientX: number, clientY: number
          scrollY: window.scrollY
       },
       elementBox: { x: box.left, y: box.top, width: box.width, height: box.height },
+      ...(area ? { area: { ...area } } : {}),
       viewport: layoutViewport()
    }
 }

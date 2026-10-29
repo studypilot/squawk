@@ -32,7 +32,8 @@ thread is a _squawk_, numbered per site (`feat/login#3`). The `squawk` CLI reads
    - `squawk screenshot '<key>#<n>' --out /tmp/squawk-<n>.png`, then open the PNG with the Read
      tool. Always look at the screenshot; the text alone is often ambiguous. The pinned element is
      at `anchor.elementBox` (viewport pixels; multiply by `screenshot.devicePixelRatio` for image
-     pixels).
+     pixels). When `anchor.area` is set, the reviewer marked that rectangle rather than one
+     element; the selectors then describe the smallest element containing it.
 4. **Find the code.** Map `page` (route) and `anchor.selectors` to source: search for
    `testId` (`data-testid`, `data-test`, `id`) first, then distinctive parts of `css`, then
    `text.exact` in components and translation files. Check that `meta.ref` matches what you expect;

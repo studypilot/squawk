@@ -632,10 +632,8 @@ tr:hover .inline-edit-trigger,
 }
 
 .screenshot-frame-full img {
-   max-height: calc(100vh - 64px);
-   max-width: calc(100vw - 64px);
-   object-fit: contain;
-   width: auto;
+   height: auto;
+   width: 100%;
 }
 
 .screenshot figcaption {
@@ -675,6 +673,24 @@ tr:hover .inline-edit-trigger,
 
 .pin-small::after {
    animation: none;
+}
+
+/* The outlined area of an area squawk, in percent of the screenshot. */
+.pin-area {
+   border: 2px solid var(--sq-primary);
+   border-radius: 4px;
+   box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.85),
+      var(--sq-shadow-1);
+   box-sizing: border-box;
+   pointer-events: none;
+   position: absolute;
+}
+
+.pin-area-small {
+   border-radius: 2px;
+   border-width: 1.5px;
+   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
 }
 
 @keyframes pin-pulse {

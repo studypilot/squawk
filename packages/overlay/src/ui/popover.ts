@@ -1,11 +1,11 @@
 import { h } from "./dom"
+import type { PinLocation } from "./pins"
 import { placeBeside } from "./placement"
-import type { Box } from "./placement"
 
 export interface ThreadPopover {
    element: HTMLElement
-   /** Shows `content` next to the box `locate` reports; follows it on scroll and resize. */
-   show(content: HTMLElement, locate: () => Box | null, rightInset: number): void
+   /** Shows `content` next to the pin `locate` reports; follows it on scroll and resize. */
+   show(content: HTMLElement, locate: () => PinLocation | null, rightInset: number): void
    hide(): void
    isOpen(): boolean
 }
@@ -26,20 +26,20 @@ export function createThreadPopover(onLost: () => void): ThreadPopover {
       tabindex: "-1",
       hidden: true
    })
-   let locate: (() => Box | null) | null = null
+   let locate: (() => PinLocation | null) | null = null
    let inset = 0
    let frame = 0
 
    function position(): void {
       if (!locate) return
-      const box = locate()
-      if (!box) {
+      const location = locate()
+      if (!location) {
          onLost()
          return
       }
       const placed = placeBeside({
-         avoid: box,
-         point: { x: box.x, y: box.y + box.height },
+         avoid: location.avoid,
+         point: location.point,
          width: WIDTH,
          height: element.offsetHeight || HEIGHT_ESTIMATE,
          bounds: { x: 0, y: 0, width: window.innerWidth - inset, height: window.innerHeight }

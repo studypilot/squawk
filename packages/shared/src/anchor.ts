@@ -10,9 +10,20 @@ export const textQuoteSchema = z.object({
    suffix: z.string().max(64).optional()
 })
 
+const boxSchema = z.object({
+   x: z.number(),
+   y: z.number(),
+   width: z.number(),
+   height: z.number()
+})
+
 /**
  * Everything the overlay records to find a pinned element again. Selectors are tried in the
  * order testId, css, xpath, text; `page` is the last resort and marks the pin as orphaned.
+ *
+ * A squawk pins either a point on an element (the click) or an area the reviewer dragged out.
+ * For an area, the element is the smallest one that contains the whole rectangle, and the pin
+ * (`rect`, `page`) sits at the rectangle's top-left corner.
  */
 export const anchorSchema = z.object({
    version: z.literal(1),
@@ -40,12 +51,14 @@ export const anchorSchema = z.object({
       scrollY: z.number()
    }),
    /** Element box in viewport coordinates at capture time, for drawing the marker on the screenshot. */
-   elementBox: z.object({
-      x: z.number(),
-      y: z.number(),
-      width: z.number(),
-      height: z.number()
-   }),
+   elementBox: boxSchema,
+   /**
+    * The dragged rectangle in viewport coordinates at capture time, only for area squawks. On
+    * the page it moves and scales with the element, on the screenshot it is drawn as recorded.
+    */
+   area: boxSchema
+      .extend({ width: z.number().positive(), height: z.number().positive() })
+      .optional(),
    viewport: z.object({
       width: z.number().int().positive(),
       height: z.number().int().positive()
@@ -54,3 +67,4 @@ export const anchorSchema = z.object({
 
 export type Anchor = z.infer<typeof anchorSchema>
 export type TextQuote = z.infer<typeof textQuoteSchema>
+export type AnchorBox = z.infer<typeof boxSchema>

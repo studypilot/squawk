@@ -1,9 +1,17 @@
 import type { Squawk } from "@squawk/shared"
 import { markdownPreview } from "@squawk/shared"
+import { areaOnElement } from "../anchor/area"
 import { resolveAnchor } from "../anchor/resolve"
 import { avatar, h, icon } from "./dom"
 import { authorName, relativeTime } from "./format"
 import type { Box } from "./placement"
+
+export interface PinLocation {
+   /** What a card must not cover: the pin, plus the area of an area squawk. */
+   avoid: Box
+   /** The pin's foot on the page, where a card lines up. */
+   point: { x: number; y: number }
+}
 
 export interface PinsHandlers {
    select(squawkId: string): void
@@ -23,8 +31,8 @@ export interface PinsLayer {
    select(squawkId: string | null): void
    /** Highlights a pin while its list row is hovered. */
    highlight(squawkId: string | null): void
-   /** Viewport box of a shown pin, or null when it is not on the page. */
-   locate(squawkId: string): Box | null
+   /** Where a shown pin (and its area) is in the viewport, or null when it is not on the page. */
+   locate(squawkId: string): PinLocation | null
    /** Scrolls the page so the pin is in view, unless it already is. */
    reveal(squawkId: string): void
 }
@@ -33,6 +41,8 @@ interface PinEntry {
    squawk: Squawk
    target: Element | null
    button: HTMLButtonElement
+   /** The outlined rectangle of an area squawk. */
+   area: HTMLElement | null
 }
 
 const PIN_SIZE = 24
@@ -61,10 +71,21 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
    }
 
    function position(): void {
-      for (const { squawk, target, button } of entries) {
+      for (const { squawk, target, button, area } of entries) {
          const point = pinPoint(squawk, target)
          button.hidden = !point
          if (point) button.style.transform = `translate(${point.x}px, ${point.y}px)`
+         if (!area) continue
+         const box = areaBox(squawk, target)
+         area.hidden = !box
+         if (box) {
+            Object.assign(area.style, {
+               left: `${box.x}px`,
+               top: `${box.y}px`,
+               width: `${box.width}px`,
+               height: `${box.height}px`
+            })
+         }
       }
    }
 
@@ -110,9 +131,11 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
    }
 
    function applyClasses(): void {
-      for (const { squawk, button } of entries) {
-         button.classList.toggle("is-selected", squawk.id === selectedId)
-         button.classList.toggle("is-highlighted", squawk.id === highlightedId)
+      for (const { squawk, button, area } of entries) {
+         for (const node of [button, area]) {
+            node?.classList.toggle("is-selected", squawk.id === selectedId)
+            node?.classList.toggle("is-highlighted", squawk.id === highlightedId)
+         }
       }
    }
 
@@ -155,7 +178,15 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
                },
                [h("span", {}, [resolved ? icon("check", 12) : String(squawk.number)])]
             )
-            const entry: PinEntry = { squawk, target: null, button }
+            const area = squawk.anchor?.area
+               ? h("div", {
+                    class: ["pin-area", resolved && "is-resolved", draft && "is-draft"]
+                       .filter(Boolean)
+                       .join(" "),
+                    hidden: true
+                 })
+               : null
+            const entry: PinEntry = { squawk, target: null, button, area }
             button.addEventListener("pointerenter", event => {
                if (event.pointerType === "touch") return
                showTip(entry)
@@ -168,7 +199,11 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
             return entry
          })
          applyClasses()
-         element.replaceChildren(...entries.map(entry => entry.button), tip)
+         element.replaceChildren(
+            ...entries.flatMap(entry => (entry.area ? [entry.area] : [])),
+            ...entries.map(entry => entry.button),
+            tip
+         )
          resolveEntries()
       },
       refresh: resolveEntries,
@@ -185,7 +220,9 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
          if (!entry) return null
          const point = pinPoint(entry.squawk, entry.target)
          if (!point) return null
-         return { x: point.x, y: point.y - PIN_SIZE, width: PIN_SIZE, height: PIN_SIZE }
+         const pin = { x: point.x, y: point.y - PIN_SIZE, width: PIN_SIZE, height: PIN_SIZE }
+         const area = areaBox(entry.squawk, entry.target)
+         return { avoid: area ? union(pin, area) : pin, point }
       },
       reveal(squawkId) {
          const entry = entries.find(candidate => candidate.squawk.id === squawkId)
@@ -196,6 +233,25 @@ export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
          const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
          entry.target.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" })
       }
+   }
+}
+
+/** Viewport box of an area squawk's rectangle, scaled with its element. */
+function areaBox(squawk: Squawk, target: Element | null): Box | null {
+   const anchor = squawk.anchor
+   if (!anchor?.area || !target?.isConnected) return null
+   const box = target.getBoundingClientRect()
+   return areaOnElement(anchor, { x: box.left, y: box.top, width: box.width, height: box.height })
+}
+
+function union(first: Box, second: Box): Box {
+   const x = Math.min(first.x, second.x)
+   const y = Math.min(first.y, second.y)
+   return {
+      x,
+      y,
+      width: Math.max(first.x + first.width, second.x + second.width) - x,
+      height: Math.max(first.y + first.height, second.y + second.height) - y
    }
 }
 

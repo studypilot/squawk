@@ -1,6 +1,7 @@
 import { LIMITS } from "@squawk/shared"
 import type {
    Anchor,
+   AnchorBox,
    CreateSquawkInput,
    Squawk,
    SquawkMeta,
@@ -137,6 +138,7 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    })
    const pinMode = createPinMode(host, {
       pick: (element, clientX, clientY) => void compose(element, clientX, clientY),
+      pickArea: (element, area) => void compose(element, area.x, area.y, area),
       cancel: () => stopPinMode()
    })
    const launcher = createLauncher({
@@ -622,11 +624,16 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
 
    let composer: Composer | null = null
 
-   async function compose(element: Element, clientX: number, clientY: number): Promise<void> {
+   async function compose(
+      element: Element,
+      clientX: number,
+      clientY: number,
+      area?: AnchorBox
+   ): Promise<void> {
       stopPinMode()
       store.set({ mode: "busy" })
       const { siteKey, pageKey } = store.get()
-      const anchor = captureAnchor(element, clientX, clientY)
+      const anchor = captureAnchor(element, clientX, clientY, area)
       // Page facts belong to the moment of the click, not to the send: by then the composer
       // has focus and on iOS the keyboard and focus zoom have shrunk the visible viewport.
       const meta = captureMeta(store.get().meta, anchor.viewport)

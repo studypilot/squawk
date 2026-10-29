@@ -375,8 +375,11 @@ function buildPrompt(squawk: SquawkDetail, inboxUrl: string): string {
    }
    lines.push(`- Inbox: ${inboxUrl}`, "", squawk.body.trim())
    if (squawk.anchor !== null) {
-      const { selectors } = squawk.anchor
+      const { selectors, area } = squawk.anchor
       lines.push("", "Anchor:")
+      if (area !== undefined) {
+         lines.push(`- area: ${formatArea(area)} (viewport px, the pin marks its top-left corner)`)
+      }
       if (selectors.testId !== undefined) {
          lines.push(`- testId: \`${selectors.testId}\``)
       }
@@ -500,10 +503,19 @@ function Details({ squawk }: { squawk: SquawkDetail }) {
    )
 }
 
+/** `320 × 140 at 40, 200`, rounded to whole pixels. */
+function formatArea(area: NonNullable<Anchor["area"]>): string {
+   const round = Math.round
+   return `${round(area.width)} × ${round(area.height)} at ${round(area.x)}, ${round(area.y)}`
+}
+
 function AnchorChips({ anchor }: { anchor: Anchor }) {
    const [open, setOpen] = useState(false)
-   const { selectors } = anchor
+   const { selectors, area } = anchor
    const chips: Array<{ name: string; value: string }> = []
+   if (area !== undefined) {
+      chips.push({ name: "area", value: formatArea(area) })
+   }
    if (selectors.testId !== undefined) {
       chips.push({ name: "testId", value: selectors.testId })
    }

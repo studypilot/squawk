@@ -74,6 +74,50 @@ describe("thread page link", () => {
    })
 })
 
+describe("thread screenshot", () => {
+   const screenshot = {
+      id: "2c5e0f3a-7d4b-4e8a-b1c2-3d4e5f6a7b8c",
+      width: 2000,
+      height: 1600,
+      devicePixelRatio: 2,
+      source: "extension" as const,
+      url: "/api/screenshots/2c5e0f3a-7d4b-4e8a-b1c2-3d4e5f6a7b8c"
+   }
+   const anchor = {
+      version: 1 as const,
+      selectors: { tagName: "section" },
+      rect: { x: 0.1, y: 0.25 },
+      page: { x: 100, y: 200, scrollX: 0, scrollY: 0 },
+      elementBox: { x: 0, y: 0, width: 1000, height: 800 },
+      viewport: { width: 1000, height: 800 }
+   }
+
+   it("outlines an area in percent of the viewport", async () => {
+      const element = renderThread({
+         ...squawkFixture({
+            screenshot,
+            anchor: { ...anchor, area: { x: 100, y: 200, width: 300, height: 160 } }
+         }),
+         comments: []
+      })
+      await vi.waitFor(() => expect(element.querySelector(".marker-area")).not.toBeNull())
+      const marker = element.querySelector<HTMLElement>(".marker-area")
+      expect(marker?.style.left).toBe("10%")
+      expect(marker?.style.top).toBe("25%")
+      expect(marker?.style.width).toBe("30%")
+      expect(marker?.style.height).toBe("20%")
+      expect(element.querySelector(".shot .marker")).toBeNull()
+   })
+
+   it("marks a point with a dot", async () => {
+      const element = renderThread({ ...squawkFixture({ screenshot, anchor }), comments: [] })
+      await vi.waitFor(() => expect(element.querySelector(".shot .marker")).not.toBeNull())
+      const marker = element.querySelector<HTMLElement>(".shot .marker")
+      expect(marker?.style.left).toBe("10%")
+      expect(marker?.style.top).toBe("25%")
+   })
+})
+
 describe("thread messages", () => {
    it("renders bodies as escaped Markdown", () => {
       const body = "# Title\n\n**Bold** <img src=x onerror=alert(1)> [x](javascript:alert(1))"
