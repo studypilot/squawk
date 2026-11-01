@@ -46,7 +46,7 @@ function printSquawkTable(
       const unreadMark = anyUnread ? (squawk.unread ? "• " : "  ") : ""
       const row = [
          `${unreadMark}#${squawk.number}`,
-         squawk.status,
+         squawk.dismissed ? "dismissed" : squawk.status,
          truncate(squawk.page, 30),
          truncate(firstLine(squawk.body), 50),
          truncate(authorLabel(squawk.author), 24),

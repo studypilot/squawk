@@ -17,7 +17,10 @@ export async function showCommand(
 
 /** The text form of a squawk. With `screenshotPath`, points there instead of the download hint. */
 export function renderDetail(detail: SquawkDetail, now: Date, screenshotPath?: string): string {
-   const lines = [`${detail.siteKey}#${detail.number}  [${detail.status}]  ${detail.id}`, ""]
+   const lines = [
+      `${detail.siteKey}#${detail.number}  [${detail.dismissed ? "dismissed" : detail.status}]  ${detail.id}`,
+      ""
+   ]
    const field = (label: string, value: string | undefined): void => {
       if (value !== undefined && value !== "") lines.push(`${`${label}:`.padEnd(11)}${value}`)
    }

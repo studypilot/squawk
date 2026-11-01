@@ -199,6 +199,7 @@ export async function loadSquawkViews(
                     since: toIsoString(row.workingSince)
                  },
          resolvedAt: toIsoString(row.resolvedAt),
+         dismissed: row.dismissed,
          resolvedBy: isResolvedByAnyone
             ? resolveAuthor({ userId: row.resolvedByUserId, tokenId: row.resolvedByTokenId })
             : null

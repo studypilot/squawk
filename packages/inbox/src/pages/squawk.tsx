@@ -132,7 +132,7 @@ function SquawkView({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: ()
             <div className="detail-main">
                <header className="detail-title-row">
                   <span className="detail-number">#{squawk.number}</span>
-                  <StatusChip status={squawk.status} />
+                  <StatusChip status={squawk.status} dismissed={squawk.dismissed} />
                   <button
                      type="button"
                      className="button button-ghost button-small detail-title-action"
@@ -185,7 +185,7 @@ function SquawkView({ squawk, onChanged }: { squawk: SquawkDetail; onChanged: ()
                      <p className="resolved-banner">
                         <CheckIcon size={14} />
                         <span>
-                           Resolved
+                           {squawk.dismissed ? "Dismissed" : "Resolved"}
                            {squawk.resolvedBy !== null && <> by {authorName(squawk.resolvedBy)}</>}
                            {" · "}
                            <RelativeTime value={squawk.resolvedAt} />

@@ -93,6 +93,13 @@ export class ApiClient {
       return this.requestUnchecked("PATCH", `/api/squawks/${ref}`, { body: { status } })
    }
 
+   /** Declines the squawk: posts the reason as a reply and resolves it as dismissed. */
+   dismiss(ref: string, reason: string): Promise<unknown> {
+      return this.requestUnchecked("PATCH", `/api/squawks/${ref}`, {
+         body: { status: "resolved", dismissReason: reason }
+      })
+   }
+
    /** Marks the squawk as being worked on by the caller (agents and CLI logins only). */
    async claim(ref: string): Promise<void> {
       await this.requestUnchecked("PUT", `/api/squawks/${ref}/working`, {})

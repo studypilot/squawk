@@ -7,7 +7,7 @@ import { screenshotCommand } from "./commands/screenshot"
 import { showCommand } from "./commands/show"
 import { siteKeyCommand } from "./commands/site-key"
 import { sitesCommand } from "./commands/sites"
-import { reopenCommand, resolveCommand } from "./commands/status"
+import { dismissCommand, reopenCommand, resolveCommand } from "./commands/status"
 import { tokenCreateCommand, tokenListCommand, tokenRevokeCommand } from "./commands/tokens"
 import { watchCommand } from "./commands/watch"
 import { workCommand } from "./commands/work"
@@ -131,6 +131,17 @@ export function createProgram(context: CliContext): Command {
       .addOption(siteOption)
       .option("--comment <text>", "comment (Markdown) to post before resolving")
       .action(withContext(resolveCommand))
+
+   program
+      .command("dismiss")
+      .description(
+         "decline a squawk without changing anything; the reason is posted as a reply and the " +
+            "squawk is resolved as dismissed"
+      )
+      .argument("<ref>", REF_HELP)
+      .addOption(siteOption)
+      .requiredOption("--reason <text>", "why nothing changes (Markdown)")
+      .action(withContext(dismissCommand))
 
    program
       .command("reopen")

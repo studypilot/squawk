@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm"
 import {
+   boolean,
    check,
    index,
    integer,
@@ -103,6 +104,8 @@ export const squawks = pgTable(
       resolvedAt: timestampColumn("resolved_at"),
       resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
       resolvedByTokenId: uuid("resolved_by_token_id").references(() => tokens.id),
+      /** Resolved without a change: someone declined it and gave the reason as the last reply. */
+      dismissed: boolean("dismissed").notNull().default(false),
       /**
        * The agent working on the squawk right now: an agent token, or a user together with the
        * CLI login token their agent uses (like the author columns). All three null when unclaimed.
@@ -126,6 +129,7 @@ export const squawks = pgTable(
          "squawks_submitted_unless_draft",
          sql`(status in ('open', 'resolved')) = (submitted_at is not null)`
       ),
+      check("squawks_dismissed_only_resolved", sql`not dismissed or status = 'resolved'`),
       check(
          "squawks_working_claimant",
          sql`(working_user_id is null and working_token_id is null and working_since is null) or (working_since is not null and num_nonnulls(working_user_id, working_token_id) >= 1)`

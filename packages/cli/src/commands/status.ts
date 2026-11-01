@@ -28,3 +28,17 @@ export async function reopenCommand(
    if (context.json) return printJson(context, response)
    printLine(context, `Reopened ${ref}.`)
 }
+
+/** Declines a squawk with a reason (a reply), and resolves it as dismissed. */
+export async function dismissCommand(
+   context: CommandContext,
+   ref: string,
+   options: { site?: string; reason: string }
+): Promise<void> {
+   const apiRef = resolveRef(ref, options.site)
+   const reason = validateBody(options.reason)
+   const client = await connect(context)
+   const response = await client.dismiss(apiRef, reason)
+   if (context.json) return printJson(context, response)
+   printLine(context, `Dismissed ${ref}.`)
+}

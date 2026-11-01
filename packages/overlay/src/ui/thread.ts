@@ -252,7 +252,11 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
          detail = next
          element.removeAttribute("aria-busy")
          title.textContent = `#${next.number}`
-         status.textContent = next.status === "resolved" ? "Resolved" : "Open"
+         status.textContent = next.dismissed
+            ? "Dismissed"
+            : next.status === "resolved"
+              ? "Resolved"
+              : "Open"
          status.className = `chip status is-${next.status}`
          const resolved = next.status === "resolved"
          statusButton.replaceChildren(
@@ -268,7 +272,7 @@ export function createThreadView(squawkId: string, handlers: ThreadHandlers): Th
             banner.replaceChildren(
                icon("check", 14),
                h("span", { title: next.resolvedBy ? authorTooltip(next.resolvedBy) : "" }, [
-                  `Resolved by ${next.resolvedBy ? authorName(next.resolvedBy) : "someone"}`
+                  `${next.dismissed ? "Dismissed" : "Resolved"} by ${next.resolvedBy ? authorName(next.resolvedBy) : "someone"}`
                ]),
                next.resolvedAt
                   ? h("span", { class: "muted" }, [`· ${relativeTime(next.resolvedAt)}`])

@@ -41,6 +41,7 @@ export function squawkFixture(overrides: Partial<Squawk> = {}): Squawk {
       working: null,
       resolvedAt: null,
       resolvedBy: null,
+      dismissed: false,
       ...overrides
    }
 }

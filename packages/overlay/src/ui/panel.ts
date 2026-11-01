@@ -261,7 +261,11 @@ export function createPanel(handlers: PanelHandlers): Panel {
                            },
                            [icon("sparkle", 12), "working · ", workingSince(working.since)]
                         ),
-                     resolved && h("span", { class: "resolved" }, [icon("check", 12), "Resolved"]),
+                     resolved &&
+                        h("span", { class: "resolved" }, [
+                           icon("check", 12),
+                           squawk.dismissed ? "Dismissed" : "Resolved"
+                        ]),
                      replies > 0 &&
                         h(
                            "span",

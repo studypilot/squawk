@@ -78,6 +78,7 @@ export function squawkFixture(overrides: Record<string, unknown> = {}) {
       working: null,
       resolvedAt: null,
       resolvedBy: null,
+      dismissed: false,
       comments: [],
       ...overrides
    }

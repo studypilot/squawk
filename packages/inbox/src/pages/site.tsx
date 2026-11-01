@@ -438,7 +438,7 @@ function SquawkRow({
                )}
             </span>
          </span>
-         <StatusChip status={squawk.status} />
+         <StatusChip status={squawk.status} dismissed={squawk.dismissed} />
          <span className="squawk-number">#{squawk.number}</span>
       </Link>
    )

@@ -433,6 +433,28 @@ describe("squawk CLI", () => {
          expect(harness.fetchMock).toHaveBeenCalledTimes(1)
       })
 
+      it("dismisses with a reason in one request", async () => {
+         harness.fetchMock.mockResolvedValueOnce(
+            jsonResponse(squawkFixture({ status: "resolved", dismissed: true }))
+         )
+         expect(
+            await harness.run("dismiss", "feat/login#3", "--reason", "Works as designed.")
+         ).toBe(0)
+         const patch = recordedRequest(harness.fetchMock, 0)
+         expect([patch.method, patch.url, patch.body]).toEqual([
+            "PATCH",
+            detailUrl,
+            { status: "resolved", dismissReason: "Works as designed." }
+         ])
+         expect(harness.stdout()).toBe("Dismissed feat/login#3.\n")
+      })
+
+      it("does not dismiss without a reason", async () => {
+         expect(await harness.run("dismiss", "feat/login#3")).toBe(1)
+         expect(await harness.run("dismiss", "feat/login#3", "--reason", "  ")).toBe(1)
+         expect(harness.fetchMock).not.toHaveBeenCalled()
+      })
+
       it("reopens", async () => {
          harness.fetchMock.mockResolvedValueOnce(jsonResponse(squawkFixture()))
          expect(await harness.run("reopen", "feat/login#3")).toBe(0)

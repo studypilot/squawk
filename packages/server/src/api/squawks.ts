@@ -245,8 +245,17 @@ squawkRoutes.patch("/:ref", async c => {
       throw conflict("Only drafts can be edited")
    } else if (input.status !== undefined) {
       const status = input.status
+      const dismissReason = input.dismissReason
+      const dismissed = dismissReason !== undefined
       await database.transaction(async transaction => {
-         if (status !== squawk.status) await updateStatus(transaction, principal, squawk.id, status)
+         if (dismissReason !== undefined) {
+            await transaction
+               .insert(comments)
+               .values({ squawkId: squawk.id, body: dismissReason, ...authorColumns(principal) })
+         }
+         if (status !== squawk.status || dismissed !== squawk.dismissed) {
+            await updateStatus(transaction, principal, squawk.id, status, dismissed)
+         }
          await afterWrite(transaction, principal, [squawk.id], { releasesClaim: true })
       })
    }
@@ -307,7 +316,8 @@ async function updateStatus(
    database: Database,
    principal: Principal,
    squawkId: string,
-   status: SquawkTargetStatus
+   status: SquawkTargetStatus,
+   dismissed: boolean
 ): Promise<void> {
    const author = authorColumns(principal)
    const resolution =
@@ -320,7 +330,7 @@ async function updateStatus(
          : { resolvedAt: null, resolvedByUserId: null, resolvedByTokenId: null }
    await database
       .update(squawks)
-      .set({ status, ...resolution })
+      .set({ status, dismissed: status === "resolved" && dismissed, ...resolution })
       .where(eq(squawks.id, squawkId))
 }
 

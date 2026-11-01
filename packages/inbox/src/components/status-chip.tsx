@@ -3,11 +3,11 @@ import { CheckIcon } from "./icons"
 
 const LABELS: Record<SquawkStatus, string> = { draft: "Draft", open: "Open", resolved: "Resolved" }
 
-export function StatusChip({ status }: { status: SquawkStatus }) {
+export function StatusChip({ status, dismissed }: { status: SquawkStatus; dismissed: boolean }) {
    return (
-      <span className={`chip chip-${status}`}>
+      <span className={`chip chip-${status}${dismissed ? " chip-dismissed" : ""}`}>
          {status === "open" ? <span className="chip-dot" /> : <CheckIcon size={11} />}
-         <span className="chip-label">{LABELS[status]}</span>
+         <span className="chip-label">{dismissed ? "Dismissed" : LABELS[status]}</span>
       </span>
    )
 }

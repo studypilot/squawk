@@ -44,8 +44,11 @@ so the selectors describe the surroundings, not one specific thing.
 6. **Fix and verify** the way the project normally does, and commit.
 7. **Answer.** `squawk resolve 'KEY#N' --comment "What was wrong, what changed (abc1234)."` when
    the fix is verified. `--comment` is posted first; the squawk is only resolved if that worked.
-   When the request is unclear, or the right answer is "won't fix", reply instead and leave it
-   open: `squawk reply 'KEY#N' "One concrete question?"`.
+   When the request is unclear, or whether to change it at all is a judgment call, reply instead
+   and leave it open: `squawk reply 'KEY#N' "One concrete question?"`. When nothing needs to
+   change (already fixed in a newer build, a duplicate, intended behaviour you can point to),
+   decline it: `squawk dismiss 'KEY#N' --reason "..."` posts the reason and resolves it as
+   dismissed.
 
 Quote references in the shell: `'feature/settings#3'` (`#` starts a comment in some shells).
 `#N` together with `--site KEY` works everywhere a reference is expected.
@@ -139,7 +142,8 @@ squawk show 'KEY#N' --json                         # thread, page, anchor, meta
 squawk screenshot 'KEY#N' --out /tmp/squawk-N.png  # then look at the PNG
 squawk reply 'KEY#N' "Fixed: ... (abc1234)"        # reply; or --file PATH, or - for stdin
 squawk resolve 'KEY#N' --comment "Fixed: ... (abc1234)"  # reply and resolve in one go
-squawk reopen 'KEY#N'                              # undo a resolve
+squawk dismiss 'KEY#N' --reason "Already fixed in abc1234."  # nothing to change
+squawk reopen 'KEY#N'                              # undo a resolve or dismiss
 squawk work 'KEY#N' ['KEY#M' ...]                  # claim
 squawk work 'KEY#N' --done                         # release without replying
 squawk watch --site KEY --json --out /tmp/squawk   # wait, claim, return; 0 = items, 3 = timeout

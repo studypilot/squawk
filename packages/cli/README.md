@@ -53,6 +53,7 @@ together with `--site`. Quote `<site>#<n>` in zsh: `'feat/login#3'`.
 | `screenshot REF [--site KEY] [--out PATH]`                                        | `squawk screenshot '#3' --site feat/login --out /tmp/3.png`                          |
 | `reply REF (TEXT \| --file PATH \| -)`                                            | `squawk reply 'feat/login#3' "Fixed in a1b2c3d."`                                    |
 | `resolve REF [--comment TEXT]`                                                    | `squawk resolve 'feat/login#3' --comment "Fixed in a1b2c3d."`                        |
+| `dismiss REF --reason TEXT`                                                       | `squawk dismiss 'feat/login#3' --reason "Fixed in a1b2c3d."`                         |
 | `reopen REF`                                                                      | `squawk reopen 'feat/login#3'`                                                       |
 | `work REF... [--site KEY] [--done]`                                               | `squawk work 'feat/login#3' --done`                                                  |
 | `watch [--site KEY] [--timeout S] [--interval S] [--out DIR] [--no-claim]`        | `squawk watch --site feat/login --json --out /tmp/squawk`                            |

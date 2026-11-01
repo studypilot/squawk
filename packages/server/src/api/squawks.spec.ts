@@ -307,6 +307,54 @@ describe("squawk detail, comments and status", () => {
       expect(reopenedDetail.resolvedBy).toBeNull()
    })
 
+   it("dismisses with a reason, and resolving or reopening clears the dismissal", async () => {
+      const squawk = await createSquawk({ siteKey: "dismiss" })
+
+      const dismissed = await context.request("PATCH", `/api/squawks/${squawk.id}`, {
+         credentials,
+         json: { status: "resolved", dismissReason: "Works as designed." }
+      })
+      const dismissedDetail = squawkDetailSchema.parse(await dismissed.json())
+      expect(dismissedDetail).toMatchObject({ status: "resolved", dismissed: true })
+      expect(dismissedDetail.comments.map(comment => comment.body)).toEqual(["Works as designed."])
+
+      const resolved = await context.request("PATCH", `/api/squawks/${squawk.id}`, {
+         credentials,
+         json: { status: "resolved" }
+      })
+      expect(squawkDetailSchema.parse(await resolved.json())).toMatchObject({
+         status: "resolved",
+         dismissed: false
+      })
+
+      await context.request("PATCH", `/api/squawks/${squawk.id}`, {
+         credentials,
+         json: { status: "resolved", dismissReason: "Not reproducible." }
+      })
+      const reopened = await context.request("PATCH", `/api/squawks/${squawk.id}`, {
+         credentials,
+         json: { status: "open" }
+      })
+      expect(squawkDetailSchema.parse(await reopened.json())).toMatchObject({
+         status: "open",
+         dismissed: false
+      })
+   })
+
+   it("rejects a dismissal without status resolved or with an empty reason", async () => {
+      const squawk = await createSquawk({ siteKey: "dismiss-invalid" })
+      for (const json of [
+         { status: "open", dismissReason: "No." },
+         { status: "resolved", dismissReason: "   " }
+      ]) {
+         const response = await context.request("PATCH", `/api/squawks/${squawk.id}`, {
+            credentials,
+            json
+         })
+         expect(response.status).toBe(400)
+      }
+   })
+
    it("rejects an invalid status", async () => {
       const squawk = await createSquawk({ siteKey: "status-invalid" })
       const response = await context.request("PATCH", `/api/squawks/${squawk.id}`, {

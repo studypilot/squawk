@@ -1,0 +1,2 @@
+ALTER TABLE "squawks" ADD COLUMN "dismissed" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "squawks" ADD CONSTRAINT "squawks_dismissed_only_resolved" CHECK (not dismissed or status = 'resolved');

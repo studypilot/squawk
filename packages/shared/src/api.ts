@@ -187,7 +187,12 @@ export const squawkSchema = z.object({
    /** Set while an agent has claimed the squawk; cleared by its reply, resolve or `DELETE`. */
    working: workingSchema.nullable(),
    resolvedAt: z.string().datetime().nullable(),
-   resolvedBy: authorSchema.nullable()
+   resolvedBy: authorSchema.nullable(),
+   /**
+    * Resolved without a change: `resolvedBy` declined it, and the newest reply gives the reason.
+    * Always false unless `status` is `resolved`.
+    */
+   dismissed: z.boolean()
 })
 export type Squawk = z.infer<typeof squawkSchema>
 
@@ -252,15 +257,21 @@ export const createCommentInputSchema = z.object({
 
 /**
  * PATCH /api/squawks/:id. `status` resolves or reopens (not allowed on drafts). `body` edits the
- * text and is allowed only on the caller's own drafts.
+ * text and is allowed only on the caller's own drafts. `dismissReason` (only with `status:
+ * "resolved"`) declines the squawk instead: the reason is added as a reply and the squawk is
+ * resolved with `dismissed: true`, both in one step.
  */
 export const updateSquawkInputSchema = z
    .object({
       status: squawkTargetStatusSchema.optional(),
-      body: z.string().min(1).max(LIMITS.bodyMaxLength).optional()
+      body: z.string().min(1).max(LIMITS.bodyMaxLength).optional(),
+      dismissReason: z.string().trim().min(1).max(LIMITS.bodyMaxLength).optional()
    })
    .refine(input => input.status !== undefined || input.body !== undefined, {
       message: "status or body is required"
+   })
+   .refine(input => input.dismissReason === undefined || input.status === "resolved", {
+      message: 'dismissReason requires status "resolved"'
    })
 export type UpdateSquawkInput = z.infer<typeof updateSquawkInputSchema>
 

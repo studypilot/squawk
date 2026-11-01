@@ -44,9 +44,13 @@ thread is a _squawk_, numbered per site (`feat/login#3`). The `squawk` CLI reads
 7. **Resolve** only after the fix is verified: `squawk resolve '<key>#<n>'`, or combine the reply:
    `squawk resolve '<key>#<n>' --comment "..."`.
 8. **Unclear request?** Reply with one concrete question and leave the squawk open.
+9. **Nothing to change?** When the squawk is already fixed in a newer build, a duplicate, or
+   describes intended behaviour you can point to, decline it with the reason:
+   `squawk dismiss '<key>#<n>' --reason "..."`. Whether something is worth changing at all is the
+   reviewer's call: ask (step 8) instead of dismissing.
 
-Finish with a summary for the user: which squawks you resolved (with SHAs), which you asked about,
-and which you skipped and why.
+Finish with a summary for the user: which squawks you resolved (with SHAs), which you dismissed and
+why, which you asked about, and which you skipped and why.
 
 ## Waiting for squawks (agents)
 
@@ -107,7 +111,8 @@ squawk show 'KEY#N' --json                         # thread, page, anchor, meta
 squawk screenshot 'KEY#N' --out /tmp/squawk-N.png  # then Read the PNG
 squawk reply 'KEY#N' "Fixed: ... (abc1234)"        # reply; or --file PATH, or - for stdin
 squawk resolve 'KEY#N' --comment "Fixed: ... (abc1234)"  # reply and resolve in one go
-squawk reopen 'KEY#N'                              # undo a resolve
+squawk dismiss 'KEY#N' --reason "Already fixed in abc1234."  # nothing to change
+squawk reopen 'KEY#N'                              # undo a resolve or dismiss
 squawk work 'KEY#N' ['KEY#M' ...]                  # mark as being worked on (reviewers see it)
 squawk work 'KEY#N' --done                         # release without replying
 squawk watch --site KEY --json --out /tmp/squawk   # wait for squawks and claim them; 0 = items, 3 = timeout

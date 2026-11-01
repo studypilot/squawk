@@ -171,6 +171,7 @@ export function squawkFixture(overrides: Partial<SquawkDetail> = {}): SquawkDeta
       working: null,
       resolvedAt: null,
       resolvedBy: null,
+      dismissed: false,
       comments: [
          commentFixture({
             id: "55555555-5555-4555-8555-555555555555",
