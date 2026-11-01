@@ -20,7 +20,7 @@ const HEIGHT_ESTIMATE = 320
  */
 export function createThreadPopover(onLost: () => void): ThreadPopover {
    const element = h("div", {
-      class: "thread-popover",
+      class: "thread-popover chrome",
       role: "dialog",
       "aria-label": "Squawk thread",
       tabindex: "-1",

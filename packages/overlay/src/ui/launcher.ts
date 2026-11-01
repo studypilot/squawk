@@ -41,7 +41,7 @@ export function createLauncher(handlers: LauncherHandlers): Launcher {
       h("span", { class: "launcher-divider" }),
       pinButton
    ])
-   const element = h("div", { class: "launcher-group" }, [pill])
+   const element = h("div", { class: "launcher-group chrome" }, [pill])
 
    return {
       element,

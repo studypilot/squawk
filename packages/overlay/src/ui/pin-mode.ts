@@ -1,7 +1,7 @@
 import type { AnchorBox } from "@squawk/shared"
 import { anchorTarget, areaTarget } from "../anchor/capture"
-import { uniqueTestId } from "../anchor/test-id"
 import { h } from "./dom"
+import { labelForElement } from "./element-label"
 
 export interface PinModeHandlers {
    pick(element: Element, clientX: number, clientY: number): void
@@ -52,7 +52,12 @@ export function createPinMode(overlayHost: HTMLElement, handlers: PinModeHandler
       h("kbd", {}, ["Esc"])
    ])
    const layer = h("div", { class: "pin-layer" })
-   const element = h("div", { class: "pin-mode", hidden: true }, [layer, highlight, areaDraw, hint])
+   const element = h("div", { class: "pin-mode chrome", hidden: true }, [
+      layer,
+      highlight,
+      areaDraw,
+      hint
+   ])
    let frame = 0
    let press: Press | null = null
    let suppressClick = false
@@ -78,7 +83,7 @@ export function createPinMode(overlayHost: HTMLElement, handlers: PinModeHandler
          height: `${box.height}px`
       })
       highlight.classList.toggle("is-near-top", box.top < CHIP_CLEARANCE)
-      chip.textContent = uniqueTestId(target) ?? target.localName
+      chip.textContent = labelForElement(target)
    }
 
    function pressedArea(current: Press): AnchorBox {

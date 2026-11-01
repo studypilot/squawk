@@ -3,6 +3,7 @@ import type { Anchor } from "@squawk/shared"
 import { capturedPoint } from "../anchor/area"
 import type { CapturedScreenshot } from "../screenshot"
 import { autoGrow, h, icon, spinner } from "./dom"
+import { labelForAnchor } from "./element-label"
 import { isNarrowViewport, placeBeside } from "./placement"
 
 /** `draft` adds the squawk to the user's review, `now` sends it to everyone right away. */
@@ -20,25 +21,23 @@ export interface Composer {
    close(): void
 }
 
-const CARD_WIDTH = 360
-const ARROW_INSET = 22
-const ARROW_HALF = 6
+const CARD_WIDTH = 320
 /** Used until the card is in the DOM and can report its real height. */
-const CARD_HEIGHT_ESTIMATE = 400
+const CARD_HEIGHT_ESTIMATE = 180
 /** The pin (or the centre of the area) is kept inside the middle third of the thumbnail crop. */
 const CROP_BIAS_MIN = 1 / 3
 const CROP_BIAS_MAX = 2 / 3
 
 /**
- * Card with screenshot preview, comment field and the two ways to file it, placed next to the
- * pin with an arrow pointing at it. Enter adds the squawk to the review, Cmd/Ctrl+Enter sends it
+ * Compact card next to the pin: the name of the pinned element (which unfolds the screenshot
+ * preview), the comment field and the two ways to file it. Enter adds the squawk to the review, Cmd/Ctrl+Enter sends it
  * right away, Shift+Enter breaks the line. The wrapper also carries the new pin on the page,
  * and the outlined area for an area squawk.
  */
 export function createComposer(options: ComposerOptions): Composer {
    const { anchor, screenshot } = options
    const textarea = h("textarea", {
-      placeholder: "What should change here?",
+      placeholder: "What should change?",
       "aria-label": "Comment",
       maxlength: LIMITS.bodyMaxLength
    })
@@ -47,7 +46,7 @@ export function createComposer(options: ComposerOptions): Composer {
    const draftButton = h(
       "button",
       { class: "button primary", type: "button", title: "Add to your review (Enter)" },
-      [h("span", {}, ["Add to review"]), h("kbd", {}, ["↵"]), spinner()]
+      [h("span", {}, ["Add"]), h("kbd", {}, ["↵"]), spinner()]
    )
    const nowButton = h(
       "button",
@@ -108,10 +107,39 @@ export function createComposer(options: ComposerOptions): Composer {
       void send(event.metaKey || event.ctrlKey ? "now" : "draft")
    })
 
-   const arrow = h("span", { class: "composer-arrow" })
-   const card = h("div", { class: "composer", role: "dialog", "aria-label": "New squawk" }, [
-      arrow,
-      ...preview(anchor, screenshot),
+   const details = h(
+      "div",
+      { class: "composer-details", hidden: true },
+      preview(anchor, screenshot)
+   )
+   const toggle = h(
+      "button",
+      {
+         class: "composer-toggle",
+         type: "button",
+         "aria-expanded": "false",
+         title: "Show the screenshot",
+         onclick: () => {
+            details.hidden = !details.hidden
+            toggle.setAttribute("aria-expanded", String(!details.hidden))
+            toggle.title = details.hidden ? "Show the screenshot" : "Hide the screenshot"
+            placeCard(card, anchor, card.offsetHeight || CARD_HEIGHT_ESTIMATE)
+            textarea.focus()
+         }
+      },
+      [
+         icon("chevron", 12),
+         h("span", { class: "composer-label" }, [labelForAnchor(anchor)]),
+         screenshot && screenshot.source !== "extension"
+            ? h("span", { class: "composer-approximate", title: "Approximate screenshot" }, [
+                 icon("info", 12)
+              ])
+            : null
+      ]
+   )
+   const card = h("div", { class: "composer chrome", role: "dialog", "aria-label": "New squawk" }, [
+      toggle,
+      details,
       textarea,
       error,
       h("div", { class: "composer-footer" }, [
@@ -135,10 +163,10 @@ export function createComposer(options: ComposerOptions): Composer {
       })
       marks.unshift(newArea)
    }
-   placeCard(card, arrow, anchor, CARD_HEIGHT_ESTIMATE)
+   placeCard(card, anchor, CARD_HEIGHT_ESTIMATE)
    // Once mounted the card knows its height, which decides whether below/above fits.
    requestAnimationFrame(() => {
-      placeCard(card, arrow, anchor, card.offsetHeight || CARD_HEIGHT_ESTIMATE)
+      placeCard(card, anchor, card.offsetHeight || CARD_HEIGHT_ESTIMATE)
       textarea.focus()
    })
    return {
@@ -230,11 +258,8 @@ function cropAxis(
    }
 }
 
-/**
- * Places the card next to the anchored element with the arrow on the nearest edge pointing at
- * the pin. Below the sheet breakpoint the CSS takes over.
- */
-function placeCard(card: HTMLElement, arrow: HTMLElement, anchor: Anchor, height: number): void {
+/** Places the card next to the anchored element. Below the sheet breakpoint the CSS takes over. */
+function placeCard(card: HTMLElement, anchor: Anchor, height: number): void {
    if (isNarrowViewport()) return
    const point = { x: anchor.page.x - window.scrollX, y: anchor.page.y - window.scrollY }
    const chosen = placeBeside({
@@ -246,15 +271,4 @@ function placeCard(card: HTMLElement, arrow: HTMLElement, anchor: Anchor, height
    })
    card.style.left = `${chosen.left}px`
    card.style.top = `${chosen.top}px`
-   card.classList.remove("is-right", "is-left", "is-bottom", "is-top")
-   card.classList.add(`is-${chosen.side}`)
-   arrow.style.top = ""
-   arrow.style.left = ""
-   if (chosen.side === "right" || chosen.side === "left") {
-      const offset = point.y - chosen.top - ARROW_HALF
-      arrow.style.top = `${Math.max(ARROW_INSET, Math.min(offset, height - ARROW_INSET))}px`
-      return
-   }
-   const offset = point.x - chosen.left - ARROW_HALF
-   arrow.style.left = `${Math.max(ARROW_INSET, Math.min(offset, CARD_WIDTH - ARROW_INSET))}px`
 }

@@ -52,7 +52,7 @@ const VIEWPORT_MARGIN = 8
 
 /** Numbered pins on the page, kept in place on scroll and resize, with a hover card. */
 export function createPinsLayer(handlers: PinsHandlers): PinsLayer {
-   const tip = h("div", { class: "pin-tip", "aria-hidden": "true" })
+   const tip = h("div", { class: "pin-tip chrome", "aria-hidden": "true" })
    const element = h("div", { class: "pins" }, [tip])
    let entries: PinEntry[] = []
    let selectedId: string | null = null

@@ -15,7 +15,7 @@ export interface Toast {
 }
 
 export function createToast(): Toast {
-   const element = h("div", { class: "toast", role: "status", "aria-live": "polite" })
+   const element = h("div", { class: "toast chrome", role: "status", "aria-live": "polite" })
    let timer: ReturnType<typeof setTimeout> | undefined
 
    function hide(): void {
