@@ -114,6 +114,10 @@ If the preview sends a CSP, allow the Squawk origin:
 | `style-src`   | `https://squawk.example.com 'unsafe-inline'` | The overlay's `<style>` in its shadow root, and the Inter font CSS |
 | `font-src`    | `https://squawk.example.com`                 | Inter                                                              |
 
+The overlay shows each author's profile picture from the identity provider. With Google sign-in
+these come from `https://*.googleusercontent.com`; add that to `img-src` too, otherwise authors
+appear with a broken image.
+
 `Cross-Origin-Opener-Policy: same-origin` cuts the popup off from the page, so sign-in can only
 use the code. Use `same-origin-allow-popups` on previews if you need COOP.
 
@@ -146,4 +150,12 @@ What it may capture and when is described in [packages/extension/README.md](../p
 | `u`       | Mark the open thread unread              |
 | `Esc`     | Leave a field, close the thread or panel |
 
-Shortcuts are ignored while the page's own inputs have focus.
+Shortcuts are ignored while the page's own inputs have focus. A page shortcut on the same key
+wins: the overlay skips keys the page has already handled (`preventDefault`).
+
+The overlay also works on top of the page's modal dialogs, drawers and focus traps (Radix,
+Headless UI and the like) without the page doing anything. Its clicks, focus, keys and scrolling
+do not reach the page's document listeners, so a dialog does not take them for interaction
+outside and close, and focus stays in the overlay's fields. While something of the overlay is
+open, `Esc` closes that first and is marked handled before the page sees it, so the dialog below
+stays open; after that, `Esc` is the page's again.

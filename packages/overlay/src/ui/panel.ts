@@ -419,6 +419,7 @@ export function createPanel(handlers: PanelHandlers): Panel {
       textarea.addEventListener("keydown", event => {
          if (event.key === "Escape") {
             event.preventDefault()
+            event.stopPropagation()
             stop()
             return
          }

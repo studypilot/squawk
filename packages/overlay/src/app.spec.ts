@@ -64,18 +64,21 @@ async function boot(queue: unknown[][] = []): Promise<SquawkApi> {
 }
 
 /**
- * Every test boots a fresh overlay, and the overlay has no teardown. Its window listeners and
- * DOM observer are recorded here and removed after the test, so an earlier overlay neither
- * reacts to the next test's keys nor re-mounts its host when that test advances the clock.
+ * Every test boots a fresh overlay, and the overlay has no teardown. Its window and document
+ * element listeners and DOM observer are recorded here and removed after the test, so an earlier
+ * overlay neither reacts to the next test's events nor re-mounts its host when that test
+ * advances the clock.
  */
 const leftovers: (() => void)[] = []
 
 function trackOverlaySideEffects(): void {
-   const addListener = window.addEventListener.bind(window)
-   vi.spyOn(window, "addEventListener").mockImplementation((type, listener, options) => {
-      addListener(type, listener, options)
-      leftovers.push(() => window.removeEventListener(type, listener, options))
-   })
+   for (const target of [window, document.documentElement] as EventTarget[]) {
+      const addListener = target.addEventListener.bind(target)
+      vi.spyOn(target, "addEventListener").mockImplementation((type, listener, options) => {
+         addListener(type, listener, options)
+         leftovers.push(() => target.removeEventListener(type, listener, options))
+      })
+   }
    const NativeObserver = MutationObserver
    vi.stubGlobal(
       "MutationObserver",
@@ -269,6 +272,19 @@ describe("review drafts", () => {
       expect(text(".draft")).toContain("Spacing is 4px off")
    })
 
+   it("leaves the draft editor with Escape and keeps the panel open", async () => {
+      await bootWithDraft()
+
+      click(".draft-body")
+      const textarea = shadow().querySelector<HTMLTextAreaElement>(".draft.is-editing textarea")
+      if (!textarea) throw new Error("editor not open")
+      textarea.value = ""
+      press("Escape", textarea)
+
+      expect(shadow().querySelector(".draft.is-editing")).toBeNull()
+      expect(shadow().querySelector(".panel")?.classList.contains("is-open")).toBe(true)
+   })
+
    it("deletes a draft after confirming", async () => {
       await bootWithDraft()
 
@@ -366,6 +382,99 @@ describe("keyboard shortcuts", () => {
       expect(requests()).toContainEqual({ call: `DELETE /tokens/${TOKEN_ID}`, body: undefined })
       expect(localStorage.getItem(`squawk:${SERVER}:token`)).toBeNull()
       expect(text(".sign-in")).toContain("Sign in")
+   })
+})
+
+describe("over a modal dialog of the page", () => {
+   /**
+    * What reaches listeners on the page's document, where modal dialogs watch for the outside,
+    * and whether it was marked handled at that moment.
+    */
+   function listenOnDocument(
+      types: string[],
+      capture = false
+   ): { type: string; defaultPrevented: boolean }[] {
+      const seen: { type: string; defaultPrevented: boolean }[] = []
+      const record = (event: Event): void => {
+         seen.push({ type: event.type, defaultPrevented: event.defaultPrevented })
+      }
+      for (const type of types) {
+         document.addEventListener(type, record, capture)
+         leftovers.push(() => document.removeEventListener(type, record, capture))
+      }
+      return seen
+   }
+
+   it("keeps pointer, focus, key and wheel events inside the overlay from the page", async () => {
+      await boot()
+      const types = ["pointerdown", "mousedown", "click", "focusin", "keydown", "wheel"]
+      const seen = listenOnDocument(types)
+      const launcher = shadow().querySelector(".launcher")
+      if (!launcher) throw new Error("launcher not rendered")
+
+      for (const type of types) {
+         launcher.dispatchEvent(new Event(type, { bubbles: true, composed: true }))
+      }
+      expect(seen.map(event => event.type)).toEqual([])
+
+      // The page still hears its own events.
+      document.body.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }))
+      expect(seen.map(event => event.type)).toEqual(["pointerdown"])
+   })
+
+   it("hides focus moving into the overlay from a focus trap, not from the element", async () => {
+      await boot()
+      const seen = listenOnDocument(["focusout"])
+      const field = document.createElement("input")
+      document.body.append(field)
+      const ownBlur = vi.fn()
+      field.addEventListener("focusout", ownBlur)
+      try {
+         const into = shadow().querySelector(".launcher")
+         field.dispatchEvent(
+            new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: into })
+         )
+         expect(ownBlur).toHaveBeenCalledOnce()
+         expect(seen).toHaveLength(0)
+
+         field.dispatchEvent(
+            new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: null })
+         )
+         expect(seen).toHaveLength(1)
+      } finally {
+         field.remove()
+      }
+   })
+
+   it("marks an Escape it uses as handled before the page's capture listeners", async () => {
+      const squawk = await boot()
+      const seen = listenOnDocument(["keydown"], true)
+      squawk.open()
+      await vi.advanceTimersByTimeAsync(0)
+
+      press("Escape", document.body, { cancelable: true })
+      expect(seen.map(event => event.defaultPrevented)).toEqual([true])
+      expect(shadow().querySelector(".panel")?.classList.contains("is-open")).toBe(false)
+
+      // With nothing of the overlay open, Escape is the page's.
+      press("Escape", document.body, { cancelable: true })
+      expect(seen.map(event => event.defaultPrevented)).toEqual([true, false])
+   })
+
+   it("leaves Escape in the page's own fields to the page", async () => {
+      const squawk = await boot()
+      const seen = listenOnDocument(["keydown"], true)
+      squawk.open()
+      await vi.advanceTimersByTimeAsync(0)
+      const field = document.createElement("input")
+      document.body.append(field)
+      try {
+         press("Escape", field, { cancelable: true })
+         expect(seen.map(event => event.defaultPrevented)).toEqual([false])
+         expect(shadow().querySelector(".panel")?.classList.contains("is-open")).toBe(true)
+      } finally {
+         field.remove()
+      }
    })
 })
 

@@ -68,6 +68,30 @@ const LIST_MAX_PAGES = 5
 const FONT_LINK_ID = "squawk-inter"
 /** Width of the panel on wide screens; pins and the thread popover stay left of it. */
 const PANEL_WIDTH = 380
+/**
+ * Events that belong to the overlay stop at `<html>`, before the page's document and window
+ * listeners: events inside the overlay, and focus leaving a page element for the overlay. From
+ * the document they seem to come from the host, outside every page element, so the page's
+ * shortcuts would fire, and a modal dialog would take them for a click or focus outside: close,
+ * pull focus back out of the overlay, or block scrolling in it. The page element that loses
+ * focus still gets its own `focusout`.
+ */
+const OVERLAY_EVENTS = [
+   "keydown",
+   "keyup",
+   "keypress",
+   "pointerdown",
+   "pointerup",
+   "mousedown",
+   "mouseup",
+   "click",
+   "touchstart",
+   "touchend",
+   "touchmove",
+   "wheel",
+   "focusin",
+   "focusout"
+]
 
 export function createOverlay(config: OverlayConfig, version: string): SquawkApi {
    const store = createStore<OverlayState>({
@@ -126,8 +150,18 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
    style.textContent = styles
    // Keystrokes in the overlay run its own shortcuts and must not trigger the page's.
    shadow.addEventListener("keydown", event => handleShortcut(event as KeyboardEvent))
-   for (const type of ["keydown", "keyup", "keypress"]) {
-      shadow.addEventListener(type, event => event.stopPropagation())
+   for (const type of OVERLAY_EVENTS) {
+      document.documentElement.addEventListener(
+         type,
+         event => {
+            if (belongsToOverlay(event)) event.stopPropagation()
+         },
+         { passive: true }
+      )
+   }
+   function belongsToOverlay(event: Event): boolean {
+      if (event.composedPath().includes(host)) return true
+      return event.type === "focusout" && (event as FocusEvent).relatedTarget === host
    }
 
    const toast = createToast()
@@ -703,10 +737,13 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
     * next/previous squawk, `r` resolve, `u` mark unread, `Esc` closes the innermost thing.
     */
    function handleShortcut(event: KeyboardEvent): void {
-      if (event.defaultPrevented || event.isComposing) return
+      if (event.isComposing) return
       const target = event.composedPath()[0]
       const inOverlay = event.composedPath().includes(host)
+      // Before the `defaultPrevented` check: the overlay prevents its Escape itself (`ownsEscape`).
+      // Overlay fields that handle Escape on their own stop it instead.
       if (event.key === "Escape") return handleEscape(event, target, inOverlay)
+      if (event.defaultPrevented) return
       if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
       if (isEditable(target) || store.get().mode !== "idle") return
       const handled = runShortcut(event.key)
@@ -764,6 +801,29 @@ export function createOverlay(config: OverlayConfig, version: string): SquawkApi
       event.preventDefault()
    }
 
+   /**
+    * The page's own fields keep their Escape. Otherwise, while something of the overlay is open,
+    * Escape closes that first, as it sits on top of the page.
+    */
+   function ownsEscape(event: KeyboardEvent): boolean {
+      const path = event.composedPath()
+      if (!path.includes(host) && isEditable(path[0])) return false
+      const { mode, threadId, panel: view } = store.get()
+      return composer !== null || mode !== "idle" || threadId !== null || view !== "closed"
+   }
+
+   // A modal dialog in the page listens for Escape on the document in the capture phase and
+   // closes unless the key was handled. An Escape the overlay is about to use is marked handled
+   // before that; the overlay's own listeners still get it.
+   window.addEventListener(
+      "keydown",
+      event => {
+         if (event.key === "Escape" && !event.isComposing && ownsEscape(event)) {
+            event.preventDefault()
+         }
+      },
+      true
+   )
    window.addEventListener("keydown", handleShortcut)
 
    setInterval(() => {

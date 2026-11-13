@@ -110,8 +110,12 @@ describe("composer", () => {
 
    it("closes with Escape and has no Markdown hint", () => {
       const { composer, press, close } = setup()
-      press("Escape")
+      const outside = vi.fn()
+      composer.element.addEventListener("keydown", outside)
+      press("Escape", { bubbles: true })
       expect(close).toHaveBeenCalledOnce()
+      // Handled here: the overlay's own Escape handling must not close something else too.
+      expect(outside).not.toHaveBeenCalled()
       expect(composer.element.textContent).not.toContain("Markdown")
    })
 })

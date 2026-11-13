@@ -99,6 +99,7 @@ export function createComposer(options: ComposerOptions): Composer {
    textarea.addEventListener("keydown", event => {
       if (event.key === "Escape") {
          event.preventDefault()
+         event.stopPropagation()
          options.close()
          return
       }
